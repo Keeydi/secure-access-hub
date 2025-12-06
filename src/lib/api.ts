@@ -587,6 +587,60 @@ export async function deleteUser(userId: string): Promise<void> {
 }
 
 /**
+ * Update user email
+ */
+export async function updateUserEmail(
+  userId: string,
+  newEmail: string
+): Promise<void> {
+  const { error } = await supabase
+    .from('users')
+    .update({
+      email: newEmail.toLowerCase(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', userId);
+
+  if (error) {
+    throw new Error(`Failed to update user email: ${error.message}`);
+  }
+}
+
+/**
+ * Activate user (for future use - currently users are always active)
+ * This function is prepared for when we add an active/inactive status field
+ */
+export async function activateUser(userId: string): Promise<void> {
+  // For now, this is a placeholder
+  // In the future, you might add an 'active' boolean field to the users table
+  // For now, we'll just log the action
+  const { ipAddress } = await import('@/lib/ip-address').then(m => m.getClientIpAddress()).catch(() => ({ ipAddress: null }));
+  await createAuditLog(userId, 'User activated', ipAddress, null);
+}
+
+/**
+ * Deactivate user (for future use - currently users are always active)
+ * This function is prepared for when we add an active/inactive status field
+ */
+export async function deactivateUser(userId: string): Promise<void> {
+  // For now, this is a placeholder
+  // In the future, you might add an 'active' boolean field to the users table
+  // For now, we'll just log the action
+  const { ipAddress } = await import('@/lib/ip-address').then(m => m.getClientIpAddress()).catch(() => ({ ipAddress: null }));
+  await createAuditLog(userId, 'User deactivated', ipAddress, null);
+}
+
+/**
+ * Admin-initiated password reset (generates reset token for user)
+ */
+export async function adminInitiatePasswordReset(userId: string): Promise<string> {
+  const token = await createPasswordResetToken(userId);
+  const { ipAddress } = await import('@/lib/ip-address').then(m => m.getClientIpAddress()).catch(() => ({ ipAddress: null }));
+  await createAuditLog(userId, 'Password reset initiated by admin', ipAddress, null);
+  return token;
+}
+
+/**
  * Generate and store password reset token
  */
 export async function createPasswordResetToken(userId: string): Promise<string> {

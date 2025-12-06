@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom';
 import { Users, Shield, Activity, Search, MoreVertical, CheckCircle, XCircle, Loader2, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { useAuth, UserRole } from '@/contexts/AuthContext';
 import DashboardLayout from '@/components/DashboardLayout';
 import * as api from '@/lib/api';
@@ -12,6 +13,32 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { useToast } from '@/hooks/use-toast';
 
 interface MockUser {
   id: string;
@@ -40,6 +67,33 @@ export default function AdminPanel() {
   const [loading, setLoading] = useState(false);
   const [logsLoading, setLogsLoading] = useState(false);
   const [attemptsLoading, setAttemptsLoading] = useState(false);
+  const { toast } = useToast();
+  
+  // Dialog states
+  const [roleChangeDialog, setRoleChangeDialog] = useState<{ open: boolean; userId: string | null; currentRole: UserRole | null }>({
+    open: false,
+    userId: null,
+    currentRole: null,
+  });
+  const [editUserDialog, setEditUserDialog] = useState<{ open: boolean; userId: string | null; currentEmail: string | null }>({
+    open: false,
+    userId: null,
+    currentEmail: null,
+  });
+  const [deleteUserDialog, setDeleteUserDialog] = useState<{ open: boolean; userId: string | null; userEmail: string | null }>({
+    open: false,
+    userId: null,
+    userEmail: null,
+  });
+  const [resetPasswordDialog, setResetPasswordDialog] = useState<{ open: boolean; userId: string | null; userEmail: string | null }>({
+    open: false,
+    userId: null,
+    userEmail: null,
+  });
+  
+  const [newRole, setNewRole] = useState<UserRole>('StandardUser');
+  const [newEmail, setNewEmail] = useState('');
+  const [resetToken, setResetToken] = useState<string | null>(null);
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
@@ -115,6 +169,112 @@ export default function AdminPanel() {
     if (diffMins < 60) return `${diffMins} min ago`;
     if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
     return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+  };
+
+  const handleChangeRole = async () => {
+    if (!roleChangeDialog.userId || !newRole) return;
+    
+    try {
+      await api.updateUserRole(roleChangeDialog.userId, newRole);
+      const { getClientIpAddress } = await import('@/lib/ip-address');
+      const ipAddress = await getClientIpAddress();
+      await api.createAuditLog(roleChangeDialog.userId, `Role changed to ${newRole} by admin`, ipAddress, null);
+      
+      // Refresh users list
+      const users = await api.getAllUsers();
+      setUsersList(users);
+      
+      toast({
+        title: 'Role updated',
+        description: `User role has been changed to ${newRole}.`,
+      });
+      
+      setRoleChangeDialog({ open: false, userId: null, currentRole: null });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to update user role.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleEditUser = async () => {
+    if (!editUserDialog.userId || !newEmail) return;
+    
+    try {
+      await api.updateUserEmail(editUserDialog.userId, newEmail);
+      const { getClientIpAddress } = await import('@/lib/ip-address');
+      const ipAddress = await getClientIpAddress();
+      await api.createAuditLog(editUserDialog.userId, `Email updated by admin`, ipAddress, null);
+      
+      // Refresh users list
+      const users = await api.getAllUsers();
+      setUsersList(users);
+      
+      toast({
+        title: 'Email updated',
+        description: `User email has been updated.`,
+      });
+      
+      setEditUserDialog({ open: false, userId: null, currentEmail: null });
+      setNewEmail('');
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to update user email.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!deleteUserDialog.userId) return;
+    
+    try {
+      await api.deleteUser(deleteUserDialog.userId);
+      const { getClientIpAddress } = await import('@/lib/ip-address');
+      const ipAddress = await getClientIpAddress();
+      await api.createAuditLog(deleteUserDialog.userId, 'User deleted by admin', ipAddress, null);
+      
+      // Refresh users list
+      const users = await api.getAllUsers();
+      setUsersList(users);
+      
+      toast({
+        title: 'User deleted',
+        description: 'User has been permanently deleted.',
+      });
+      
+      setDeleteUserDialog({ open: false, userId: null, userEmail: null });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to delete user.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!resetPasswordDialog.userId) return;
+    
+    try {
+      const token = await api.adminInitiatePasswordReset(resetPasswordDialog.userId);
+      const resetLink = `${window.location.origin}/reset-password?token=${token}`;
+      setResetToken(resetLink);
+      
+      toast({
+        title: 'Password reset link generated',
+        description: 'Copy the reset link and share it with the user.',
+      });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to generate password reset link.',
+        variant: 'destructive',
+      });
+    }
   };
 
   return (
@@ -240,11 +400,37 @@ export default function AdminPanel() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem>Edit User</DropdownMenuItem>
-                                <DropdownMenuItem>Change Role</DropdownMenuItem>
-                                <DropdownMenuItem>Reset Password</DropdownMenuItem>
-                                <DropdownMenuItem className="text-destructive">
-                                  Deactivate
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setEditUserDialog({ open: true, userId: u.id, currentEmail: u.email });
+                                    setNewEmail(u.email);
+                                  }}
+                                >
+                                  Edit User
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setRoleChangeDialog({ open: true, userId: u.id, currentRole: u.role });
+                                    setNewRole(u.role);
+                                  }}
+                                >
+                                  Change Role
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setResetPasswordDialog({ open: true, userId: u.id, userEmail: u.email });
+                                    setResetToken(null);
+                                  }}
+                                >
+                                  Reset Password
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="text-destructive"
+                                  onClick={() => {
+                                    setDeleteUserDialog({ open: true, userId: u.id, userEmail: u.email });
+                                  }}
+                                >
+                                  Delete User
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
@@ -350,6 +536,140 @@ export default function AdminPanel() {
             )}
           </div>
         )}
+
+        {/* Change Role Dialog */}
+        <Dialog open={roleChangeDialog.open} onOpenChange={(open) => setRoleChangeDialog({ open, userId: null, currentRole: null })}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Change User Role</DialogTitle>
+              <DialogDescription>
+                Select a new role for this user. Current role: {roleChangeDialog.currentRole}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="role">New Role</Label>
+                <Select value={newRole} onValueChange={(value) => setNewRole(value as UserRole)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Admin">Admin</SelectItem>
+                    <SelectItem value="StandardUser">Standard User</SelectItem>
+                    <SelectItem value="RestrictedUser">Restricted User</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setRoleChangeDialog({ open: false, userId: null, currentRole: null })}>
+                Cancel
+              </Button>
+              <Button onClick={handleChangeRole}>Change Role</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit User Dialog */}
+        <Dialog open={editUserDialog.open} onOpenChange={(open) => setEditUserDialog({ open, userId: null, currentEmail: null })}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit User</DialogTitle>
+              <DialogDescription>
+                Update the user's email address.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="email">Email Address</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  placeholder="user@example.com"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEditUserDialog({ open: false, userId: null, currentEmail: null })}>
+                Cancel
+              </Button>
+              <Button onClick={handleEditUser}>Save Changes</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete User Dialog */}
+        <AlertDialog open={deleteUserDialog.open} onOpenChange={(open) => setDeleteUserDialog({ open, userId: null, userEmail: null })}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This action cannot be undone. This will permanently delete the user account for{' '}
+                <strong>{deleteUserDialog.userEmail}</strong> and all associated data.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDeleteUser} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                Delete User
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Reset Password Dialog */}
+        <Dialog open={resetPasswordDialog.open} onOpenChange={(open) => setResetPasswordDialog({ open, userId: null, userEmail: null })}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Reset User Password</DialogTitle>
+              <DialogDescription>
+                Generate a password reset link for {resetPasswordDialog.userEmail}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              {resetToken ? (
+                <div className="space-y-2">
+                  <Label>Password Reset Link</Label>
+                  <div className="flex gap-2">
+                    <Input value={resetToken} readOnly className="font-mono text-sm" />
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        navigator.clipboard.writeText(resetToken);
+                        toast({
+                          title: 'Copied',
+                          description: 'Reset link copied to clipboard.',
+                        });
+                      }}
+                    >
+                      Copy
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Share this link with the user. It will expire in 1 hour.
+                  </p>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Click "Generate Reset Link" to create a password reset link for this user.
+                </p>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => {
+                setResetPasswordDialog({ open: false, userId: null, userEmail: null });
+                setResetToken(null);
+              }}>
+                {resetToken ? 'Close' : 'Cancel'}
+              </Button>
+              {!resetToken && (
+                <Button onClick={handleResetPassword}>Generate Reset Link</Button>
+              )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   );
