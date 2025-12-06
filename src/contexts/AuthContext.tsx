@@ -143,15 +143,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   // Helper to get client IP and user agent
-  const getClientInfo = () => {
+  const getClientInfo = async () => {
+    const { getClientIpAddress } = await import('@/lib/ip-address');
+    const ipAddress = await getClientIpAddress();
     return {
-      ipAddress: null, // Will be captured server-side or via API
+      ipAddress,
       userAgent: navigator.userAgent,
     };
   };
 
   const login = async (email: string, password: string): Promise<{ requiresMfa: boolean }> => {
-    const { ipAddress, userAgent } = getClientInfo();
+    const { ipAddress, userAgent } = await getClientInfo();
     
     // Check rate limit before attempting login
     const rateLimit = await checkLoginRateLimit(email);
@@ -235,7 +237,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { requiresMfa: false };
   };
 
-  const verifyMfa = async (code: string, type: 'totp' | 'email' = 'email'): Promise<boolean> => {
+  const verifyMfa = async (code: string, type: 'totp' | 'email' | 'backup' = 'email'): Promise<boolean> => {
     if (!user) {
       return false;
     }
@@ -245,7 +247,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     let isValid = false;
 
-    if (type === 'totp') {
+    if (type === 'backup') {
+      // Verify backup code
+      isValid = await api.verifyBackupCode(user.id, code);
+    } else if (type === 'totp') {
       // Verify TOTP code
       const mfaSecret = await api.getMfaSecret(user.id);
       if (!mfaSecret) {
@@ -260,7 +265,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (isValid) {
       setMfaVerified(true);
       sessionStorage.setItem(SESSION_MFA_VERIFIED_KEY, 'true');
-      const { ipAddress, userAgent } = getClientInfo();
+      const { ipAddress, userAgent } = await getClientInfo();
       await api.createAuditLog(user.id, `MFA verified (${type})`, ipAddress, userAgent);
       
       // Generate new tokens after MFA verification
@@ -300,7 +305,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         // Delete session from database
         await api.deleteSession(storedAccessToken);
-        const { ipAddress, userAgent } = getClientInfo();
+        const { ipAddress, userAgent } = await getClientInfo();
         await api.createAuditLog(user.id, 'User logout', ipAddress, userAgent);
       } catch (error) {
         console.error('Error during logout:', error);
@@ -320,7 +325,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Hash password using bcrypt
     const passwordHash = await hashPassword(password);
     
-    const { ipAddress, userAgent } = getClientInfo();
+    const { ipAddress, userAgent } = await getClientInfo();
     
     try {
       const newUser = await api.createUser(email, passwordHash, 'StandardUser');
@@ -384,7 +389,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const sent = await sendEmailOtp(user.email, code);
     
     if (sent) {
-      const { ipAddress, userAgent } = getClientInfo();
+      const { ipAddress, userAgent } = await getClientInfo();
       await api.createAuditLog(user.id, 'Email OTP sent', ipAddress, userAgent);
     }
 
@@ -407,7 +412,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(updatedUser);
       sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify(updatedUser));
       
-      const { ipAddress, userAgent } = getClientInfo();
+      const { ipAddress, userAgent } = await getClientInfo();
       await api.createAuditLog(user.id, 'TOTP MFA enabled', ipAddress, userAgent);
       return true;
     }
@@ -431,7 +436,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(updatedUser);
       sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify(updatedUser));
       
-      const { ipAddress, userAgent } = getClientInfo();
+      const { ipAddress, userAgent } = await getClientInfo();
       await api.createAuditLog(user.id, 'Email OTP MFA enabled', ipAddress, userAgent);
       return true;
     }
@@ -450,7 +455,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(updatedUser);
       sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify(updatedUser));
       
-      const { ipAddress, userAgent } = getClientInfo();
+      const { ipAddress, userAgent } = await getClientInfo();
       await api.createAuditLog(user.id, 'MFA enabled', ipAddress, userAgent);
     } catch (error) {
       throw new Error('Failed to enable MFA');
@@ -467,7 +472,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(updatedUser);
       sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify(updatedUser));
       
-      const { ipAddress, userAgent } = getClientInfo();
+      const { ipAddress, userAgent } = await getClientInfo();
       await api.createAuditLog(user.id, 'MFA disabled', ipAddress, userAgent);
     } catch (error) {
       throw new Error('Failed to disable MFA');

@@ -85,14 +85,33 @@ export default function MfaVerify() {
     setLoading(true);
 
     const fullCode = code.join('');
-    if (fullCode.length !== 6) {
-      setError('Please enter a complete 6-digit code');
+    
+    // Check if it's a backup code (format: XXXX-XXXX-XXXX, 12 characters with dashes)
+    const isBackupCodeFormat = fullCode.length === 12 && /^\d{4}-\d{4}-\d{4}$/.test(fullCode.replace(/\s/g, ''));
+    const cleanCode = fullCode.replace(/\s/g, '').replace(/-/g, '');
+    
+    if (cleanCode.length < 6 && !isBackupCodeFormat) {
+      setError('Please enter a complete code');
       setLoading(false);
       return;
     }
 
     try {
-      const success = await verifyMfa(fullCode, mfaType);
+      let success = false;
+      
+      // Try backup code first if format matches
+      if (isBackupCodeFormat) {
+        success = await verifyMfa(cleanCode, 'backup');
+      } else if (cleanCode.length === 6) {
+        // Try regular MFA code
+        success = await verifyMfa(cleanCode, mfaType);
+        
+        // If regular MFA fails, try as backup code (in case user entered backup code without dashes)
+        if (!success) {
+          success = await verifyMfa(cleanCode, 'backup');
+        }
+      }
+      
       if (success) {
         navigate('/dashboard');
       } else {
@@ -112,12 +131,15 @@ export default function MfaVerify() {
       <div className="w-full max-w-md">
         <div className="bg-card border border-border rounded-lg p-8 shadow-sm">
           <h2 className="text-2xl font-bold text-foreground mb-2 text-center">Two-Factor Authentication</h2>
-          <p className="text-muted-foreground mb-8 text-center text-sm">
+          <p className="text-muted-foreground mb-4 text-center text-sm">
             {mfaType === 'totp' 
               ? 'Enter the 6-digit code from your authenticator app'
               : emailOtpSent
               ? `Enter the 6-digit code sent to ${user?.email}`
               : 'Sending verification code to your email...'}
+          </p>
+          <p className="text-muted-foreground mb-8 text-center text-xs">
+            Or enter a backup code (12 digits, with or without dashes)
           </p>
 
           {error && (

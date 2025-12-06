@@ -490,6 +490,53 @@ export async function getFailedLoginAttemptsCount(
 }
 
 /**
+ * Get first failed login attempt time for rate limiting reset calculation
+ */
+export async function getFirstFailedLoginAttemptTime(
+  email: string,
+  since: Date
+): Promise<Date | null> {
+  const { data, error } = await supabase
+    .from('failed_login_attempts')
+    .select('attempted_at')
+    .eq('email', email.toLowerCase())
+    .eq('success', false)
+    .gte('attempted_at', since.toISOString())
+    .order('attempted_at', { ascending: true })
+    .limit(1)
+    .single();
+
+  if (error || !data) {
+    return null;
+  }
+
+  return new Date(data.attempted_at);
+}
+
+/**
+ * Get all failed login attempts (for admin panel)
+ */
+export async function getFailedLoginAttempts(limit: number = 100) {
+  const { data, error } = await supabase
+    .from('failed_login_attempts')
+    .select('*')
+    .eq('success', false)
+    .order('attempted_at', { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    throw new Error(`Failed to get failed login attempts: ${error.message}`);
+  }
+
+  return data.map((attempt) => ({
+    id: attempt.id,
+    email: attempt.email,
+    ipAddress: attempt.ip_address,
+    attemptedAt: attempt.attempted_at,
+  }));
+}
+
+/**
  * Get all users (for admin panel)
  */
 export async function getAllUsers() {

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Users, Shield, Activity, Search, MoreVertical, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { Users, Shield, Activity, Search, MoreVertical, CheckCircle, XCircle, Loader2, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth, UserRole } from '@/contexts/AuthContext';
@@ -33,11 +33,13 @@ const mockUsersList: MockUser[] = [
 export default function AdminPanel() {
   const { isAuthenticated, user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'users' | 'logs'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'logs' | 'failed-attempts'>('users');
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [usersList, setUsersList] = useState<any[]>([]);
+  const [failedAttempts, setFailedAttempts] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [logsLoading, setLogsLoading] = useState(false);
+  const [attemptsLoading, setAttemptsLoading] = useState(false);
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
@@ -82,6 +84,16 @@ export default function AdminPanel() {
         } finally {
           setLogsLoading(false);
         }
+      } else if (activeTab === 'failed-attempts') {
+        try {
+          setAttemptsLoading(true);
+          const attempts = await api.getFailedLoginAttempts(100);
+          setFailedAttempts(attempts);
+        } catch (error) {
+          console.error('Failed to load failed login attempts:', error);
+        } finally {
+          setAttemptsLoading(false);
+        }
       }
     };
 
@@ -91,6 +103,19 @@ export default function AdminPanel() {
   const filteredUsers = usersList.filter((u) =>
     u.email.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const getTimeAgo = (date: Date): string => {
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins} min ago`;
+    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+    return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+  };
 
   return (
     <DashboardLayout>
@@ -117,6 +142,13 @@ export default function AdminPanel() {
           >
             <Activity className="h-4 w-4 mr-2" />
             Audit Logs
+          </Button>
+          <Button
+            variant={activeTab === 'failed-attempts' ? 'default' : 'ghost'}
+            onClick={() => setActiveTab('failed-attempts')}
+          >
+            <AlertTriangle className="h-4 w-4 mr-2" />
+            Failed Attempts
           </Button>
         </div>
 
@@ -225,7 +257,7 @@ export default function AdminPanel() {
               </div>
             )}
           </div>
-        ) : (
+        ) : activeTab === 'logs' ? (
           <div className="glass rounded-xl p-6">
             <h2 className="text-lg font-semibold mb-6">Recent Activity</h2>
             {logsLoading ? (
@@ -258,6 +290,62 @@ export default function AdminPanel() {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="glass rounded-xl p-6">
+            <h2 className="text-lg font-semibold mb-6">Failed Login Attempts</h2>
+            {attemptsLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+            ) : failedAttempts.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                No failed login attempts found
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">
+                        Email
+                      </th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">
+                        IP Address
+                      </th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">
+                        Attempted At
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {failedAttempts.map((attempt) => {
+                      const attemptedAt = new Date(attempt.attemptedAt);
+                      const timeAgo = getTimeAgo(attemptedAt);
+                      
+                      return (
+                        <tr
+                          key={attempt.id}
+                          className="border-b border-border/50 hover:bg-muted/50 transition-colors"
+                        >
+                          <td className="py-4 px-4">
+                            <span className="font-medium">{attempt.email}</span>
+                          </td>
+                          <td className="py-4 px-4">
+                            <span className="text-sm font-mono text-muted-foreground">
+                              {attempt.ipAddress || 'N/A'}
+                            </span>
+                          </td>
+                          <td className="py-4 px-4 text-muted-foreground text-sm">
+                            {timeAgo}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
