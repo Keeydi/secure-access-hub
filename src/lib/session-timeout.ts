@@ -27,15 +27,17 @@ export async function checkSessionTimeout(
     if (refreshToken) {
       const newTokenPair = refreshAccessToken(refreshToken);
       if (newTokenPair) {
-        // Update session in database
-        const payload = verifyAccessToken(accessToken);
-        if (payload) {
+        // Get user ID from the old token (decode without verification since it's expired)
+        const decoded = JSON.parse(atob(accessToken.split('.')[1]));
+        const userId = decoded.userId;
+        
+        if (userId) {
           try {
             // Delete old session
             await api.deleteSession(accessToken);
             // Create new session
             await api.createSession(
-              payload.userId,
+              userId,
               newTokenPair.accessToken,
               newTokenPair.refreshToken,
               newTokenPair.expiresAt,
