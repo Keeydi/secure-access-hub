@@ -1,0 +1,268 @@
+import { useState, useEffect } from 'react';
+import { Navigate } from 'react-router-dom';
+import { Users, Shield, Activity, Search, MoreVertical, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { useAuth, UserRole } from '@/contexts/AuthContext';
+import DashboardLayout from '@/components/DashboardLayout';
+import * as api from '@/lib/api';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+
+interface MockUser {
+  id: string;
+  email: string;
+  role: UserRole;
+  mfaEnabled: boolean;
+  status: 'active' | 'inactive';
+  lastLogin: string;
+}
+
+const mockUsersList: MockUser[] = [
+  { id: '1', email: 'admin@example.com', role: 'Admin', mfaEnabled: true, status: 'active', lastLogin: '2 min ago' },
+  { id: '2', email: 'john@example.com', role: 'StandardUser', mfaEnabled: true, status: 'active', lastLogin: '1 hour ago' },
+  { id: '3', email: 'sarah@example.com', role: 'StandardUser', mfaEnabled: false, status: 'active', lastLogin: '3 hours ago' },
+  { id: '4', email: 'mike@example.com', role: 'RestrictedUser', mfaEnabled: false, status: 'inactive', lastLogin: '2 days ago' },
+  { id: '5', email: 'jane@example.com', role: 'Admin', mfaEnabled: true, status: 'active', lastLogin: '5 hours ago' },
+];
+
+export default function AdminPanel() {
+  const { isAuthenticated, user } = useAuth();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeTab, setActiveTab] = useState<'users' | 'logs'>('users');
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [usersList, setUsersList] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [logsLoading, setLogsLoading] = useState(false);
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (user?.role !== 'Admin') {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center h-96">
+          <div className="text-center">
+            <Shield className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+            <h2 className="text-xl font-semibold mb-2">Access Denied</h2>
+            <p className="text-muted-foreground">
+              You don't have permission to view this page.
+            </p>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  // Load users and audit logs
+  useEffect(() => {
+    const loadData = async () => {
+      if (activeTab === 'users') {
+        try {
+          setLoading(true);
+          const users = await api.getAllUsers();
+          setUsersList(users);
+        } catch (error) {
+          console.error('Failed to load users:', error);
+        } finally {
+          setLoading(false);
+        }
+      } else if (activeTab === 'logs') {
+        try {
+          setLogsLoading(true);
+          const logs = await api.getAuditLogs(100);
+          setAuditLogs(logs);
+        } catch (error) {
+          console.error('Failed to load audit logs:', error);
+        } finally {
+          setLogsLoading(false);
+        }
+      }
+    };
+
+    loadData();
+  }, [activeTab]);
+
+  const filteredUsers = usersList.filter((u) =>
+    u.email.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-8">
+        <div>
+          <h1 className="text-3xl font-bold">Admin Panel</h1>
+          <p className="text-muted-foreground mt-1">
+            Manage users, roles, and view audit logs
+          </p>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-2">
+          <Button
+            variant={activeTab === 'users' ? 'default' : 'ghost'}
+            onClick={() => setActiveTab('users')}
+          >
+            <Users className="h-4 w-4 mr-2" />
+            Users
+          </Button>
+          <Button
+            variant={activeTab === 'logs' ? 'default' : 'ghost'}
+            onClick={() => setActiveTab('logs')}
+          >
+            <Activity className="h-4 w-4 mr-2" />
+            Audit Logs
+          </Button>
+        </div>
+
+        {activeTab === 'users' ? (
+          <div className="glass rounded-xl p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div className="relative w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search users..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+              <Button>Add User</Button>
+            </div>
+
+            {loading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">
+                        User
+                      </th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">
+                        Role
+                      </th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">
+                        MFA
+                      </th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">
+                        Created
+                      </th>
+                      <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredUsers.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="py-8 text-center text-muted-foreground">
+                          No users found
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredUsers.map((u) => (
+                        <tr
+                          key={u.id}
+                          className="border-b border-border/50 hover:bg-muted/50 transition-colors"
+                        >
+                          <td className="py-4 px-4">
+                            <span className="font-medium">{u.email}</span>
+                          </td>
+                          <td className="py-4 px-4">
+                            <span
+                              className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
+                                u.role === 'Admin'
+                                  ? 'bg-primary/10 text-primary'
+                                  : u.role === 'StandardUser'
+                                  ? 'bg-secondary text-secondary-foreground'
+                                  : 'bg-muted text-muted-foreground'
+                              }`}
+                            >
+                              {u.role}
+                            </span>
+                          </td>
+                          <td className="py-4 px-4">
+                            {u.mfaEnabled ? (
+                              <CheckCircle className="h-5 w-5 text-success" />
+                            ) : (
+                              <XCircle className="h-5 w-5 text-muted-foreground" />
+                            )}
+                          </td>
+                          <td className="py-4 px-4 text-muted-foreground text-sm">
+                            {new Date(u.createdAt).toLocaleDateString()}
+                          </td>
+                          <td className="py-4 px-4 text-right">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm">
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem>Edit User</DropdownMenuItem>
+                                <DropdownMenuItem>Change Role</DropdownMenuItem>
+                                <DropdownMenuItem>Reset Password</DropdownMenuItem>
+                                <DropdownMenuItem className="text-destructive">
+                                  Deactivate
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="glass rounded-xl p-6">
+            <h2 className="text-lg font-semibold mb-6">Recent Activity</h2>
+            {logsLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+            ) : auditLogs.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                No audit logs found
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {auditLogs.map((log) => (
+                  <div
+                    key={log.id}
+                    className="flex items-center justify-between p-4 rounded-lg bg-muted/50"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                        <Activity className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <p className="font-medium">{log.action}</p>
+                        <p className="text-sm text-muted-foreground">{log.user}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm text-muted-foreground">{log.time}</p>
+                      <p className="text-xs text-muted-foreground font-mono">{log.ip}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </DashboardLayout>
+  );
+}
