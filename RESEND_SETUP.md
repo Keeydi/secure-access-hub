@@ -1,21 +1,16 @@
-# Resend Email Service Setup
+# Resend Email Service Setup - REQUIRED FOR SIGN-UPS
 
-## Current Status: Test Mode
+## ⚠️ IMPORTANT: Domain Verification Required
 
-Your Resend account is currently in **test mode**, which means:
-- ✅ You can send emails to your verified email: `darnaylakarl@gmail.com`
-- ❌ You **cannot** send emails to other recipients
+Your Resend account is currently in **test mode**, which **prevents sign-ups from working** because:
+- ✅ You can only send emails to your verified email: `darnaylakarl@gmail.com`
+- ❌ You **cannot** send OTP emails to users signing up with other email addresses
 
-## Error Message
-```
-You can only send testing emails to your own email address (darnaylakarl@gmail.com). 
-To send emails to other recipients, please verify a domain at resend.com/domains, 
-and change the `from` address to an email using this domain.
-```
+**This means users cannot complete registration!**
 
-## Solution: Verify Your Domain
+## Solution: Verify Your Domain (REQUIRED)
 
-To send emails to **any recipient**, you need to verify a domain in Resend:
+To enable sign-ups and send emails to **any recipient**, you **MUST** verify a domain in Resend:
 
 ### Step 1: Go to Resend Domains
 1. Visit: https://resend.com/domains
@@ -44,14 +39,30 @@ vercel env update RESEND_FROM_EMAIL production
 # Enter: noreply@yourdomain.com (or your verified domain email)
 ```
 
-## Temporary Workaround (Current Implementation)
+## Quick Setup Steps (5-10 minutes)
 
-The code now includes a workaround:
-- In test mode, emails are redirected to `darnaylakarl@gmail.com`
-- The original recipient is shown in the email subject/body
-- This allows you to test the system while setting up domain verification
+1. **Get a domain** (if you don't have one):
+   - Use a free domain from Freenom, or
+   - Buy a cheap domain ($1-10/year from Namecheap, GoDaddy, etc.)
 
-## Alternative: Use a Different Email Service
+2. **Verify domain in Resend**:
+   - Go to https://resend.com/domains
+   - Click "Add Domain"
+   - Add DNS records to your domain
+   - Wait for verification (5-60 minutes)
+
+3. **Update Vercel environment variable**:
+   ```bash
+   vercel env update RESEND_FROM_EMAIL production
+   # Enter: noreply@yourdomain.com
+   ```
+
+4. **Redeploy**:
+   ```bash
+   vercel --prod
+   ```
+
+## Alternative: Use a Different Email Service (If you don't have a domain)
 
 If you don't want to verify a domain, consider:
 - **SendGrid** (free tier: 100 emails/day)
