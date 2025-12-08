@@ -132,3 +132,4 @@ npm run preview
 - [Supabase Documentation](https://supabase.com/docs)
 - [Resend Documentation](https://resend.com/docs)
 
+

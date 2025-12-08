@@ -2,11 +2,11 @@
  * Email OTP utilities
  * 
  * Email Service Options:
- * - resend: Uses Resend API (requires backend API endpoint for security)
+ * - smtp: Uses custom SMTP server (requires backend API endpoint for security)
  * - mock: Development mode (logs to console)
  * 
  * For production, set up a backend API endpoint to send emails
- * to keep your API keys secure.
+ * to keep your SMTP credentials secure.
  */
 
 /**
@@ -25,7 +25,7 @@ export function generateEmailOtp(): string {
 export interface EmailConfig {
   from: string;
   subject: string;
-  service?: 'mailgun' | 'sendgrid' | 'resend' | 'mock';
+  service?: 'smtp' | 'mock';
   apiEndpoint?: string; // Backend API endpoint for sending emails
 }
 
@@ -52,22 +52,12 @@ const getApiEndpoint = () => {
 };
 
 // Get email service from env, with proper defaults
-const getEmailService = (): 'mailgun' | 'sendgrid' | 'resend' | 'mock' => {
+const getEmailService = (): 'smtp' | 'mock' => {
   const envService = import.meta.env.VITE_EMAIL_SERVICE;
   
-  // If explicitly set to 'mailgun', use it
-  if (envService === 'mailgun') {
-    return 'mailgun';
-  }
-  
-  // If explicitly set to 'sendgrid', use it
-  if (envService === 'sendgrid') {
-    return 'sendgrid';
-  }
-  
-  // If explicitly set to 'resend', use it
-  if (envService === 'resend') {
-    return 'resend';
+  // If explicitly set to 'smtp', use it
+  if (envService === 'smtp') {
+    return 'smtp';
   }
   
   // If explicitly set to 'mock', use it
@@ -75,8 +65,8 @@ const getEmailService = (): 'mailgun' | 'sendgrid' | 'resend' | 'mock' => {
     return 'mock';
   }
   
-  // Default: use 'mailgun' in production, 'mock' in development
-  return isProduction ? 'mailgun' : 'mock';
+  // Default: use 'smtp' in production, 'mock' in development
+  return isProduction ? 'smtp' : 'mock';
 };
 
 const defaultEmailConfig: EmailConfig = {
@@ -161,18 +151,14 @@ export async function sendEmailOtp(
 
   try {
     switch (emailConfig.service) {
-      case 'mailgun':
-      case 'sendgrid':
-      case 'resend':
-        // Use backend API endpoint to send email (recommended for production)
+      case 'smtp':
+        // Use backend API endpoint to send email via SMTP
         const sent = await sendEmailViaAPI(email, code, emailConfig.subject, htmlBody, textBody);
         
         if (!sent) {
           // In production, don't fall back to mock - return error
           if (isProduction) {
-            const serviceName = emailConfig.service === 'mailgun' ? 'Mailgun' : 
-                               emailConfig.service === 'sendgrid' ? 'SendGrid' : 'Resend';
-            console.error(`Failed to send email via ${serviceName} API. Check your API key and serverless function configuration.`);
+            console.error('Failed to send email via SMTP. Check your SMTP configuration and serverless function.');
             return false;
           }
           

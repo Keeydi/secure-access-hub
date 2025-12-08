@@ -13,3 +13,4 @@ UPDATE users SET is_active = TRUE WHERE is_active IS NULL;
 
 
 
+
