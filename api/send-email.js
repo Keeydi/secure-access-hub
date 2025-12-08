@@ -104,13 +104,12 @@ export default async function handler(req, res) {
         html,
       };
 
-      // Log for debugging (remove in production)
+      // Log for debugging
       console.log('Sending email via Mailgun:', {
         domain: process.env.MAILGUN_DOMAIN,
         from: fromEmail,
         to: to,
         hasApiKey: !!process.env.MAILGUN_API_KEY,
-        apiKeyLength: process.env.MAILGUN_API_KEY?.length,
       });
 
       const response = await mg.messages.create(process.env.MAILGUN_DOMAIN, messageData);
