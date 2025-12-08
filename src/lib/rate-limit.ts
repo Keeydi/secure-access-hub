@@ -14,7 +14,7 @@ const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour in milliseconds
 export async function checkLoginRateLimit(email: string): Promise<{
   isBlocked: boolean;
   remainingAttempts: number;
-  resetAt: Date;
+  resetAt: Date | null;
 }> {
   const since = new Date(Date.now() - RATE_LIMIT_WINDOW_MS);
   const failedAttempts = await api.getFailedLoginAttemptsCount(email, since);
@@ -23,7 +23,15 @@ export async function checkLoginRateLimit(email: string): Promise<{
   const isBlocked = failedAttempts >= RATE_LIMIT_ATTEMPTS;
 
   // Calculate when the rate limit will reset (1 hour from the oldest attempt)
-  const resetAt = new Date(Date.now() + RATE_LIMIT_WINDOW_MS);
+  let resetAt: Date | null = null;
+  if (isBlocked) {
+    const firstAttempt = await api.getFirstFailedLoginAttemptTime(email, since);
+    if (firstAttempt) {
+      resetAt = new Date(firstAttempt.getTime() + RATE_LIMIT_WINDOW_MS);
+    } else {
+      resetAt = new Date(Date.now() + RATE_LIMIT_WINDOW_MS);
+    }
+  }
 
   return {
     isBlocked,

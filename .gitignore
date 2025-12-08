@@ -27,3 +27,15 @@ dist-ssr
 .env
 .env.local
 .env.*.local
+
+# Build outputs
+dist
+dist-ssr
+
+# Lock files (keep package-lock.json, remove others)
+bun.lockb
+yarn.lock
+pnpm-lock.yaml
+
+# Vercel
+.vercel

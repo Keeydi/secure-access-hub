@@ -576,6 +576,53 @@ export async function getFailedLoginAttemptsCount(
 }
 
 /**
+ * Get first failed login attempt time for rate limiting reset calculation
+ */
+export async function getFirstFailedLoginAttemptTime(
+  email: string,
+  since: Date
+): Promise<Date | null> {
+  const { data, error } = await supabase
+    .from('failed_login_attempts')
+    .select('attempted_at')
+    .eq('email', email.toLowerCase())
+    .eq('success', false)
+    .gte('attempted_at', since.toISOString())
+    .order('attempted_at', { ascending: true })
+    .limit(1)
+    .single();
+
+  if (error || !data) {
+    return null;
+  }
+
+  return new Date(data.attempted_at);
+}
+
+/**
+ * Get all failed login attempts (for admin panel)
+ */
+export async function getFailedLoginAttempts(limit: number = 100) {
+  const { data, error } = await supabase
+    .from('failed_login_attempts')
+    .select('*')
+    .eq('success', false)
+    .order('attempted_at', { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    throw new Error(`Failed to get failed login attempts: ${error.message}`);
+  }
+
+  return data.map((attempt) => ({
+    id: attempt.id,
+    email: attempt.email,
+    ipAddress: attempt.ip_address,
+    attemptedAt: attempt.attempted_at,
+  }));
+}
+
+/**
  * Get all users (for admin panel)
  */
 export async function getAllUsers() {
@@ -629,10 +676,23 @@ export async function deleteUser(userId: string): Promise<void> {
 /**
  * Update user email
  */
+<<<<<<< HEAD
 export async function updateUserEmail(userId: string, email: string): Promise<void> {
   const { error } = await supabase
     .from('users')
     .update({ email, updated_at: new Date().toISOString() })
+=======
+export async function updateUserEmail(
+  userId: string,
+  newEmail: string
+): Promise<void> {
+  const { error } = await supabase
+    .from('users')
+    .update({
+      email: newEmail.toLowerCase(),
+      updated_at: new Date().toISOString(),
+    })
+>>>>>>> 0a1eb77ec4824a157bc10dbecb418f4dfac42964
     .eq('id', userId);
 
   if (error) {
@@ -641,15 +701,49 @@ export async function updateUserEmail(userId: string, email: string): Promise<vo
 }
 
 /**
+<<<<<<< HEAD
  * Admin-initiated password reset
  * Creates a password reset token and returns it (for email sending)
  */
 export async function adminResetPassword(userId: string): Promise<string> {
   const token = await createPasswordResetToken(userId);
+=======
+ * Activate user (for future use - currently users are always active)
+ * This function is prepared for when we add an active/inactive status field
+ */
+export async function activateUser(userId: string): Promise<void> {
+  // For now, this is a placeholder
+  // In the future, you might add an 'active' boolean field to the users table
+  // For now, we'll just log the action
+  const { ipAddress } = await import('@/lib/ip-address').then(m => m.getClientIpAddress()).catch(() => ({ ipAddress: null }));
+  await createAuditLog(userId, 'User activated', ipAddress, null);
+}
+
+/**
+ * Deactivate user (for future use - currently users are always active)
+ * This function is prepared for when we add an active/inactive status field
+ */
+export async function deactivateUser(userId: string): Promise<void> {
+  // For now, this is a placeholder
+  // In the future, you might add an 'active' boolean field to the users table
+  // For now, we'll just log the action
+  const { ipAddress } = await import('@/lib/ip-address').then(m => m.getClientIpAddress()).catch(() => ({ ipAddress: null }));
+  await createAuditLog(userId, 'User deactivated', ipAddress, null);
+}
+
+/**
+ * Admin-initiated password reset (generates reset token for user)
+ */
+export async function adminInitiatePasswordReset(userId: string): Promise<string> {
+  const token = await createPasswordResetToken(userId);
+  const { ipAddress } = await import('@/lib/ip-address').then(m => m.getClientIpAddress()).catch(() => ({ ipAddress: null }));
+  await createAuditLog(userId, 'Password reset initiated by admin', ipAddress, null);
+>>>>>>> 0a1eb77ec4824a157bc10dbecb418f4dfac42964
   return token;
 }
 
 /**
+<<<<<<< HEAD
  * Deactivate user (soft delete by setting is_active to false)
  * Note: Run supabase/add-user-status.sql to add is_active column
  */
@@ -685,6 +779,8 @@ export async function activateUser(userId: string): Promise<void> {
 }
 
 /**
+=======
+>>>>>>> 0a1eb77ec4824a157bc10dbecb418f4dfac42964
  * Generate and store password reset token
  */
 export async function createPasswordResetToken(userId: string): Promise<string> {
