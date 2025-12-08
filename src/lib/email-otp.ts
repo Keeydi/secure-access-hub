@@ -155,9 +155,15 @@ export async function sendEmailOtp(
         // Use backend API endpoint to send email (recommended for production)
         const sent = await sendEmailViaAPI(email, code, emailConfig.subject, htmlBody, textBody);
         
-        // If API call failed in development, fall back to mock mode
-        if (!sent && import.meta.env.DEV) {
-          console.warn('Email API failed, falling back to mock mode');
+        if (!sent) {
+          // In production, don't fall back to mock - return error
+          if (isProduction) {
+            console.error('Failed to send email via Resend API. Check your RESEND_API_KEY and serverless function configuration.');
+            return false;
+          }
+          
+          // Only fall back to mock in development
+          console.warn('Email API failed, falling back to mock mode (development only)');
           console.log(`[MOCK EMAIL] Sending OTP to ${email}: ${code}`);
           console.log(`Subject: ${emailConfig.subject}`);
           console.log(`Body: Your verification code is: ${code}`);
