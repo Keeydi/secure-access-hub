@@ -1,19 +1,22 @@
 /**
  * Vercel Serverless Function for Email Sending
  * 
- * This function handles email sending via Resend API.
+ * This function handles email sending via SendGrid API.
  * Deploy this along with your frontend to Vercel.
  * 
  * Environment Variables Required (set in Vercel dashboard):
- * - RESEND_API_KEY: Your Resend API key
- * - RESEND_FROM_EMAIL: Sender email (default: SecureAuth <onboarding@resend.dev>)
+ * - SENDGRID_API_KEY: Your SendGrid API key
+ * - SENDGRID_FROM_EMAIL: Sender email (e.g., noreply@yourdomain.com)
  * 
- * Note: Make sure 'resend' package is installed in your project dependencies
+ * Note: Make sure '@sendgrid/mail' package is installed in your project dependencies
  */
 
-import { Resend } from 'resend';
+import sgMail from '@sendgrid/mail';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Initialize SendGrid
+if (process.env.SENDGRID_API_KEY) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+}
 
 export default async function handler(req, res) {
   // Only allow POST requests
@@ -54,55 +57,49 @@ export default async function handler(req, res) {
       });
     }
 
-    // Check if Resend is configured
-    if (!process.env.RESEND_API_KEY) {
-      console.error('RESEND_API_KEY is not configured');
+    // Check if SendGrid is configured
+    if (!process.env.SENDGRID_API_KEY) {
+      console.error('SENDGRID_API_KEY is not configured');
       return res.status(500).json({ 
         error: 'Email service not configured',
-        message: 'RESEND_API_KEY environment variable is missing'
+        message: 'SENDGRID_API_KEY environment variable is missing'
       });
     }
 
-    // Get from email - ensure proper format
-    let fromEmail = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
-    
-    // Validate and format the from email
-    // Resend accepts: "email@example.com" or "Name <email@example.com>"
-    if (!fromEmail.includes('<') && !fromEmail.includes('@')) {
-      // If it's just a name without email, use default
-      fromEmail = 'SecureAuth <onboarding@resend.dev>';
-    } else if (!fromEmail.includes('<') && fromEmail.includes('@')) {
-      // If it's just an email, use it as is
-      fromEmail = fromEmail.trim();
-    } else if (fromEmail.includes('<') && fromEmail.includes('>')) {
-      // If it's already in "Name <email>" format, use it as is
-      fromEmail = fromEmail.trim();
-    } else {
-      // Fallback to default
-      fromEmail = 'SecureAuth <onboarding@resend.dev>';
-    }
+    // Get from email - SendGrid accepts email or "Name <email@example.com>"
+    const fromEmail = process.env.SENDGRID_FROM_EMAIL || 'noreply@sendgrid.net';
 
-    // Send email via Resend
-    const { data, error } = await resend.emails.send({
-      from: fromEmail,
+    // Send email via SendGrid
+    const msg = {
       to,
+      from: fromEmail,
       subject,
       html,
-    });
+    };
 
-    if (error) {
-      console.error('Resend API error:', error);
+    try {
+      await sgMail.send(msg);
+      
+      return res.status(200).json({ 
+        success: true,
+        message: 'Email sent successfully'
+      });
+    } catch (error) {
+      console.error('SendGrid API error:', error);
+      
+      // SendGrid error handling
+      let errorMessage = 'Failed to send email';
+      if (error.response) {
+        errorMessage = error.response.body?.errors?.[0]?.message || errorMessage;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
       return res.status(400).json({ 
         error: 'Failed to send email',
-        message: error.message || 'Unknown error occurred'
+        message: errorMessage
       });
     }
-
-    return res.status(200).json({ 
-      success: true, 
-      data,
-      message: 'Email sent successfully'
-    });
   } catch (error) {
     console.error('Email sending error:', error);
     return res.status(500).json({ 
@@ -111,4 +108,3 @@ export default async function handler(req, res) {
     });
   }
 }
-

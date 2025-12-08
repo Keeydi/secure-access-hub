@@ -25,7 +25,7 @@ export function generateEmailOtp(): string {
 export interface EmailConfig {
   from: string;
   subject: string;
-  service?: 'resend' | 'mock';
+  service?: 'sendgrid' | 'resend' | 'mock';
   apiEndpoint?: string; // Backend API endpoint for sending emails
 }
 
@@ -52,8 +52,13 @@ const getApiEndpoint = () => {
 };
 
 // Get email service from env, with proper defaults
-const getEmailService = (): 'resend' | 'mock' => {
+const getEmailService = (): 'sendgrid' | 'resend' | 'mock' => {
   const envService = import.meta.env.VITE_EMAIL_SERVICE;
+  
+  // If explicitly set to 'sendgrid', use it
+  if (envService === 'sendgrid') {
+    return 'sendgrid';
+  }
   
   // If explicitly set to 'resend', use it
   if (envService === 'resend') {
@@ -65,8 +70,8 @@ const getEmailService = (): 'resend' | 'mock' => {
     return 'mock';
   }
   
-  // Default: use 'resend' in production, 'mock' in development
-  return isProduction ? 'resend' : 'mock';
+  // Default: use 'sendgrid' in production, 'mock' in development
+  return isProduction ? 'sendgrid' : 'mock';
 };
 
 const defaultEmailConfig: EmailConfig = {
@@ -151,6 +156,7 @@ export async function sendEmailOtp(
 
   try {
     switch (emailConfig.service) {
+      case 'sendgrid':
       case 'resend':
         // Use backend API endpoint to send email (recommended for production)
         const sent = await sendEmailViaAPI(email, code, emailConfig.subject, htmlBody, textBody);
@@ -158,7 +164,8 @@ export async function sendEmailOtp(
         if (!sent) {
           // In production, don't fall back to mock - return error
           if (isProduction) {
-            console.error('Failed to send email via Resend API. Check your RESEND_API_KEY and serverless function configuration.');
+            const serviceName = emailConfig.service === 'sendgrid' ? 'SendGrid' : 'Resend';
+            console.error(`Failed to send email via ${serviceName} API. Check your API key and serverless function configuration.`);
             return false;
           }
           
