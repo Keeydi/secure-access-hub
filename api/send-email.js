@@ -15,11 +15,15 @@
 import formData from 'form-data';
 import Mailgun from 'mailgun.js';
 
-const mailgun = new Mailgun(formData);
-const mg = mailgun.client({
-  username: 'api',
-  key: process.env.MAILGUN_API_KEY || '',
-});
+// Initialize Mailgun client
+let mg;
+if (process.env.MAILGUN_API_KEY) {
+  const mailgun = new Mailgun(formData);
+  mg = mailgun.client({
+    username: 'api',
+    key: process.env.MAILGUN_API_KEY,
+  });
+}
 
 export default async function handler(req, res) {
   // Only allow POST requests
@@ -77,6 +81,15 @@ export default async function handler(req, res) {
       });
     }
 
+    // Initialize Mailgun client if not already initialized
+    if (!mg) {
+      const mailgun = new Mailgun(formData);
+      mg = mailgun.client({
+        username: 'api',
+        key: process.env.MAILGUN_API_KEY,
+      });
+    }
+
     // Get from email - use provided or default
     const fromEmail = process.env.MAILGUN_FROM_EMAIL || `noreply@${process.env.MAILGUN_DOMAIN}`;
 
@@ -88,6 +101,15 @@ export default async function handler(req, res) {
         subject,
         html,
       };
+
+      // Log for debugging (remove in production)
+      console.log('Sending email via Mailgun:', {
+        domain: process.env.MAILGUN_DOMAIN,
+        from: fromEmail,
+        to: to,
+        hasApiKey: !!process.env.MAILGUN_API_KEY,
+        apiKeyLength: process.env.MAILGUN_API_KEY?.length,
+      });
 
       const response = await mg.messages.create(process.env.MAILGUN_DOMAIN, messageData);
       
