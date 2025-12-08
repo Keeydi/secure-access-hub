@@ -25,7 +25,7 @@ export function generateEmailOtp(): string {
 export interface EmailConfig {
   from: string;
   subject: string;
-  service?: 'sendgrid' | 'resend' | 'mock';
+  service?: 'mailgun' | 'sendgrid' | 'resend' | 'mock';
   apiEndpoint?: string; // Backend API endpoint for sending emails
 }
 
@@ -52,8 +52,13 @@ const getApiEndpoint = () => {
 };
 
 // Get email service from env, with proper defaults
-const getEmailService = (): 'sendgrid' | 'resend' | 'mock' => {
+const getEmailService = (): 'mailgun' | 'sendgrid' | 'resend' | 'mock' => {
   const envService = import.meta.env.VITE_EMAIL_SERVICE;
+  
+  // If explicitly set to 'mailgun', use it
+  if (envService === 'mailgun') {
+    return 'mailgun';
+  }
   
   // If explicitly set to 'sendgrid', use it
   if (envService === 'sendgrid') {
@@ -70,8 +75,8 @@ const getEmailService = (): 'sendgrid' | 'resend' | 'mock' => {
     return 'mock';
   }
   
-  // Default: use 'sendgrid' in production, 'mock' in development
-  return isProduction ? 'sendgrid' : 'mock';
+  // Default: use 'mailgun' in production, 'mock' in development
+  return isProduction ? 'mailgun' : 'mock';
 };
 
 const defaultEmailConfig: EmailConfig = {
@@ -156,6 +161,7 @@ export async function sendEmailOtp(
 
   try {
     switch (emailConfig.service) {
+      case 'mailgun':
       case 'sendgrid':
       case 'resend':
         // Use backend API endpoint to send email (recommended for production)
@@ -164,7 +170,8 @@ export async function sendEmailOtp(
         if (!sent) {
           // In production, don't fall back to mock - return error
           if (isProduction) {
-            const serviceName = emailConfig.service === 'sendgrid' ? 'SendGrid' : 'Resend';
+            const serviceName = emailConfig.service === 'mailgun' ? 'Mailgun' : 
+                               emailConfig.service === 'sendgrid' ? 'SendGrid' : 'Resend';
             console.error(`Failed to send email via ${serviceName} API. Check your API key and serverless function configuration.`);
             return false;
           }

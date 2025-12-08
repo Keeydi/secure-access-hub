@@ -1,22 +1,25 @@
 /**
  * Vercel Serverless Function for Email Sending
  * 
- * This function handles email sending via SendGrid API.
+ * This function handles email sending via Mailgun API.
  * Deploy this along with your frontend to Vercel.
  * 
  * Environment Variables Required (set in Vercel dashboard):
- * - SENDGRID_API_KEY: Your SendGrid API key
- * - SENDGRID_FROM_EMAIL: Sender email (e.g., noreply@yourdomain.com)
+ * - MAILGUN_API_KEY: Your Mailgun API key
+ * - MAILGUN_DOMAIN: Your Mailgun domain (e.g., sandbox123.mailgun.org or your verified domain)
+ * - MAILGUN_FROM_EMAIL: Sender email (e.g., noreply@yourdomain.com)
  * 
- * Note: Make sure '@sendgrid/mail' package is installed in your project dependencies
+ * Note: Make sure 'mailgun.js' and 'form-data' packages are installed
  */
 
-import sgMail from '@sendgrid/mail';
+import formData from 'form-data';
+import Mailgun from 'mailgun.js';
 
-// Initialize SendGrid
-if (process.env.SENDGRID_API_KEY) {
-  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-}
+const mailgun = new Mailgun(formData);
+const mg = mailgun.client({
+  username: 'api',
+  key: process.env.MAILGUN_API_KEY || '',
+});
 
 export default async function handler(req, res) {
   // Only allow POST requests
@@ -57,42 +60,51 @@ export default async function handler(req, res) {
       });
     }
 
-    // Check if SendGrid is configured
-    if (!process.env.SENDGRID_API_KEY) {
-      console.error('SENDGRID_API_KEY is not configured');
+    // Check if Mailgun is configured
+    if (!process.env.MAILGUN_API_KEY) {
+      console.error('MAILGUN_API_KEY is not configured');
       return res.status(500).json({ 
         error: 'Email service not configured',
-        message: 'SENDGRID_API_KEY environment variable is missing'
+        message: 'MAILGUN_API_KEY environment variable is missing'
       });
     }
 
-    // Get from email - SendGrid accepts email or "Name <email@example.com>"
-    const fromEmail = process.env.SENDGRID_FROM_EMAIL || 'noreply@sendgrid.net';
+    if (!process.env.MAILGUN_DOMAIN) {
+      console.error('MAILGUN_DOMAIN is not configured');
+      return res.status(500).json({ 
+        error: 'Email service not configured',
+        message: 'MAILGUN_DOMAIN environment variable is missing'
+      });
+    }
 
-    // Send email via SendGrid
-    const msg = {
-      to,
-      from: fromEmail,
-      subject,
-      html,
-    };
+    // Get from email - use provided or default
+    const fromEmail = process.env.MAILGUN_FROM_EMAIL || `noreply@${process.env.MAILGUN_DOMAIN}`;
 
+    // Send email via Mailgun
     try {
-      await sgMail.send(msg);
+      const messageData = {
+        from: fromEmail,
+        to: [to],
+        subject,
+        html,
+      };
+
+      const response = await mg.messages.create(process.env.MAILGUN_DOMAIN, messageData);
       
       return res.status(200).json({ 
         success: true,
+        id: response.id,
         message: 'Email sent successfully'
       });
     } catch (error) {
-      console.error('SendGrid API error:', error);
+      console.error('Mailgun API error:', error);
       
-      // SendGrid error handling
+      // Mailgun error handling
       let errorMessage = 'Failed to send email';
-      if (error.response) {
-        errorMessage = error.response.body?.errors?.[0]?.message || errorMessage;
-      } else if (error.message) {
+      if (error.message) {
         errorMessage = error.message;
+      } else if (error.details) {
+        errorMessage = error.details;
       }
       
       return res.status(400).json({ 
