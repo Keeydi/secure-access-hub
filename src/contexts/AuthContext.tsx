@@ -509,23 +509,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!user) return;
 
     try {
-      // Disable both TOTP and email OTP explicitly
+      // Disable MFA - updateUserMfa will clear both TOTP and email OTP flags
       await api.updateUserMfa(user.id, false, null);
-      // Also explicitly clear both flags in database
-      const { error } = await supabase
-        .from('users')
-        .update({
-          mfa_enabled: false,
-          totp_enabled: false,
-          email_otp_enabled: false,
-          mfa_secret: null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', user.id);
-      
-      if (error) {
-        throw error;
-      }
       
       const updatedUser = { ...user, mfaEnabled: false };
       setUser(updatedUser);

@@ -184,8 +184,14 @@ export async function updateUserMfa(
   };
 
   if (mfaSecret !== undefined) {
+    // Setting TOTP secret - enable TOTP
     updateData.mfa_secret = mfaSecret;
     updateData.totp_enabled = mfaEnabled;
+  } else if (!mfaEnabled) {
+    // Disabling MFA - clear both TOTP and email OTP flags
+    updateData.totp_enabled = false;
+    updateData.email_otp_enabled = false;
+    updateData.mfa_secret = null;
   }
 
   const { error } = await supabase
