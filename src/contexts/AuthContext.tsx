@@ -8,8 +8,6 @@ import { generateEmailOtp, sendEmailOtp } from '@/lib/email-otp';
 import { checkLoginRateLimit, getRateLimitErrorMessage } from '@/lib/rate-limit';
 import { checkSessionTimeout, getTimeUntilExpiry, SESSION_TIMEOUT_MS } from '@/lib/session-timeout';
 import { getClientIpAddress, getCachedClientIp } from '@/lib/ip-address';
-import { supabase } from '@/lib/supabase';
-import { getClientIpAddress, getCachedClientIp } from '@/lib/ip-address';
 
 export type UserRole = 'Admin' | 'StandardUser' | 'RestrictedUser';
 
@@ -450,8 +448,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const isValid = verifyTotp(code, secret);
     
     if (isValid) {
-      // Store the secret in database - explicitly set type to 'totp'
-      await api.updateUserMfa(user.id, true, secret, 'totp');
+      // Store the secret in database
+      await api.updateUserMfa(user.id, true, secret);
       
       const updatedUser = { ...user, mfaEnabled: true };
       setUser(updatedUser);
@@ -474,8 +472,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const isValid = await api.verifyOtpCode(user.id, code, 'email');
     
     if (isValid) {
-      // Enable email OTP MFA - explicitly set type to 'email'
-      await api.updateUserMfa(user.id, true, null, 'email');
+      // Enable email OTP MFA
+      await api.updateUserMfa(user.id, true);
       
       const updatedUser = { ...user, mfaEnabled: true };
       setUser(updatedUser);
