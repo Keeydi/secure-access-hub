@@ -7,7 +7,6 @@ export interface User {
   role: UserRole;
   mfaEnabled: boolean;
   createdAt: string;
-  isActive?: boolean;
 }
 
 export interface LoginResult {
@@ -171,8 +170,7 @@ export async function getPasswordHash(email: string): Promise<string | null> {
 export async function updateUserMfa(
   userId: string,
   mfaEnabled: boolean,
-  mfaSecret?: string | null,
-  mfaType?: 'totp' | 'email'
+  mfaSecret?: string | null
 ): Promise<void> {
   const updateData: {
     mfa_enabled: boolean;
@@ -185,34 +183,9 @@ export async function updateUserMfa(
     updated_at: new Date().toISOString(),
   };
 
-  // If mfaSecret is provided, it's TOTP setup
   if (mfaSecret !== undefined) {
     updateData.mfa_secret = mfaSecret;
     updateData.totp_enabled = mfaEnabled;
-    // Clear email_otp_enabled when TOTP is enabled
-    if (mfaEnabled) {
-      updateData.email_otp_enabled = false;
-    }
-  } else if (mfaType) {
-    // Explicitly set based on MFA type
-    if (mfaType === 'totp') {
-      updateData.totp_enabled = mfaEnabled;
-      if (mfaEnabled) {
-        updateData.email_otp_enabled = false;
-      }
-    } else if (mfaType === 'email') {
-      updateData.email_otp_enabled = mfaEnabled;
-      if (mfaEnabled) {
-        updateData.totp_enabled = false;
-        updateData.mfa_secret = null; // Clear TOTP secret when email OTP is enabled
-      }
-    }
-  } else {
-    // Legacy: if no type specified and no secret, assume email OTP
-    updateData.email_otp_enabled = mfaEnabled;
-    if (mfaEnabled) {
-      updateData.totp_enabled = false;
-    }
   }
 
   const { error } = await supabase
@@ -221,7 +194,6 @@ export async function updateUserMfa(
     .eq('id', userId);
 
   if (error) {
-    console.error('Error updating MFA:', error);
     throw new Error(`Failed to update MFA: ${error.message}`);
   }
 }
@@ -576,72 +548,24 @@ export async function getFailedLoginAttemptsCount(
 }
 
 /**
- * Get first failed login attempt time for rate limiting reset calculation
- */
-export async function getFirstFailedLoginAttemptTime(
-  email: string,
-  since: Date
-): Promise<Date | null> {
-  const { data, error } = await supabase
-    .from('failed_login_attempts')
-    .select('attempted_at')
-    .eq('email', email.toLowerCase())
-    .eq('success', false)
-    .gte('attempted_at', since.toISOString())
-    .order('attempted_at', { ascending: true })
-    .limit(1)
-    .single();
-
-  if (error || !data) {
-    return null;
-  }
-
-  return new Date(data.attempted_at);
-}
-
-/**
- * Get all failed login attempts (for admin panel)
- */
-export async function getFailedLoginAttempts(limit: number = 100) {
-  const { data, error } = await supabase
-    .from('failed_login_attempts')
-    .select('*')
-    .eq('success', false)
-    .order('attempted_at', { ascending: false })
-    .limit(limit);
-
-  if (error) {
-    throw new Error(`Failed to get failed login attempts: ${error.message}`);
-  }
-
-  return data.map((attempt) => ({
-    id: attempt.id,
-    email: attempt.email,
-    ipAddress: attempt.ip_address,
-    attemptedAt: attempt.attempted_at,
-  }));
-}
-
-/**
  * Get all users (for admin panel)
  */
 export async function getAllUsers() {
   const { data, error } = await supabase
     .from('users')
-    .select('id, email, role, mfa_enabled, created_at, is_active')
+    .select('id, email, role, mfa_enabled, created_at')
     .order('created_at', { ascending: false });
 
   if (error) {
     throw new Error(`Failed to get users: ${error.message}`);
   }
 
-  return data.map((user: any) => ({
+  return data.map((user) => ({
     id: user.id,
     email: user.email,
     role: user.role,
     mfaEnabled: user.mfa_enabled,
     createdAt: user.created_at,
-    isActive: user.is_active !== false, // Default to true if column doesn't exist yet
   }));
 }
 
@@ -674,113 +598,6 @@ export async function deleteUser(userId: string): Promise<void> {
 }
 
 /**
- * Update user email
- */
-<<<<<<< HEAD
-export async function updateUserEmail(userId: string, email: string): Promise<void> {
-  const { error } = await supabase
-    .from('users')
-    .update({ email, updated_at: new Date().toISOString() })
-=======
-export async function updateUserEmail(
-  userId: string,
-  newEmail: string
-): Promise<void> {
-  const { error } = await supabase
-    .from('users')
-    .update({
-      email: newEmail.toLowerCase(),
-      updated_at: new Date().toISOString(),
-    })
->>>>>>> 0a1eb77ec4824a157bc10dbecb418f4dfac42964
-    .eq('id', userId);
-
-  if (error) {
-    throw new Error(`Failed to update user email: ${error.message}`);
-  }
-}
-
-/**
-<<<<<<< HEAD
- * Admin-initiated password reset
- * Creates a password reset token and returns it (for email sending)
- */
-export async function adminResetPassword(userId: string): Promise<string> {
-  const token = await createPasswordResetToken(userId);
-=======
- * Activate user (for future use - currently users are always active)
- * This function is prepared for when we add an active/inactive status field
- */
-export async function activateUser(userId: string): Promise<void> {
-  // For now, this is a placeholder
-  // In the future, you might add an 'active' boolean field to the users table
-  // For now, we'll just log the action
-  const { ipAddress } = await import('@/lib/ip-address').then(m => m.getClientIpAddress()).catch(() => ({ ipAddress: null }));
-  await createAuditLog(userId, 'User activated', ipAddress, null);
-}
-
-/**
- * Deactivate user (for future use - currently users are always active)
- * This function is prepared for when we add an active/inactive status field
- */
-export async function deactivateUser(userId: string): Promise<void> {
-  // For now, this is a placeholder
-  // In the future, you might add an 'active' boolean field to the users table
-  // For now, we'll just log the action
-  const { ipAddress } = await import('@/lib/ip-address').then(m => m.getClientIpAddress()).catch(() => ({ ipAddress: null }));
-  await createAuditLog(userId, 'User deactivated', ipAddress, null);
-}
-
-/**
- * Admin-initiated password reset (generates reset token for user)
- */
-export async function adminInitiatePasswordReset(userId: string): Promise<string> {
-  const token = await createPasswordResetToken(userId);
-  const { ipAddress } = await import('@/lib/ip-address').then(m => m.getClientIpAddress()).catch(() => ({ ipAddress: null }));
-  await createAuditLog(userId, 'Password reset initiated by admin', ipAddress, null);
->>>>>>> 0a1eb77ec4824a157bc10dbecb418f4dfac42964
-  return token;
-}
-
-/**
-<<<<<<< HEAD
- * Deactivate user (soft delete by setting is_active to false)
- * Note: Run supabase/add-user-status.sql to add is_active column
- */
-export async function deactivateUser(userId: string): Promise<void> {
-  const { error } = await supabase
-    .from('users')
-    .update({ 
-      is_active: false,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', userId);
-
-  if (error) {
-    throw new Error(`Failed to deactivate user: ${error.message}`);
-  }
-}
-
-/**
- * Activate user
- */
-export async function activateUser(userId: string): Promise<void> {
-  const { error } = await supabase
-    .from('users')
-    .update({ 
-      is_active: true,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', userId);
-
-  if (error) {
-    throw new Error(`Failed to activate user: ${error.message}`);
-  }
-}
-
-/**
-=======
->>>>>>> 0a1eb77ec4824a157bc10dbecb418f4dfac42964
  * Generate and store password reset token
  */
 export async function createPasswordResetToken(userId: string): Promise<string> {
@@ -927,143 +744,6 @@ export async function updateUserPassword(
 
   if (error) {
     throw new Error(`Failed to update password: ${error.message}`);
-  }
-}
-
-/**
- * Dashboard Statistics
- */
-
-export interface DashboardStats {
-  activeUsers: number;
-  authRequests: number;
-  mfaAdoption: number; // Percentage
-  successRate: number; // Percentage
-}
-
-/**
- * Get total number of active users (total registered users)
- */
-export async function getActiveUsersCount(): Promise<number> {
-  const { count, error } = await supabase
-    .from('users')
-    .select('*', { count: 'exact', head: true });
-
-  if (error) {
-    console.error('Error getting active users count:', error);
-    return 0;
-  }
-
-  return count || 0;
-}
-
-/**
- * Get total number of authentication requests (login attempts)
- */
-export async function getAuthRequestsCount(): Promise<number> {
-  const { count, error } = await supabase
-    .from('audit_logs')
-    .select('*', { count: 'exact', head: true })
-    .eq('action', 'User login');
-
-  if (error) {
-    console.error('Error getting auth requests count:', error);
-    return 0;
-  }
-
-  return count || 0;
-}
-
-/**
- * Get MFA adoption rate (percentage of users with MFA enabled)
- */
-export async function getMfaAdoptionRate(): Promise<number> {
-  // Get total users count
-  const { count: totalCount, error: totalError } = await supabase
-    .from('users')
-    .select('*', { count: 'exact', head: true });
-
-  if (totalError || !totalCount || totalCount === 0) {
-    return 0;
-  }
-
-  // Get users with MFA enabled
-  const { count: mfaCount, error: mfaError } = await supabase
-    .from('users')
-    .select('*', { count: 'exact', head: true })
-    .eq('mfa_enabled', true);
-
-  if (mfaError) {
-    console.error('Error getting MFA adoption rate:', mfaError);
-    return 0;
-  }
-
-  return Math.round(((mfaCount || 0) / totalCount) * 100);
-}
-
-/**
- * Get authentication success rate (percentage of successful logins)
- */
-export async function getSuccessRate(): Promise<number> {
-  // Get successful login attempts (from audit logs)
-  const { count: successCount, error: successError } = await supabase
-    .from('audit_logs')
-    .select('*', { count: 'exact', head: true })
-    .eq('action', 'User login');
-
-  if (successError) {
-    console.error('Error getting success count:', successError);
-    return 0;
-  }
-
-  // Get failed login attempts (from failed_login_attempts table where success = false)
-  const { count: failedCount, error: failedError } = await supabase
-    .from('failed_login_attempts')
-    .select('*', { count: 'exact', head: true })
-    .eq('success', false);
-
-  if (failedError) {
-    console.error('Error getting failed count:', failedError);
-    // If we can't get failed count, assume all are successful
-    return successCount && successCount > 0 ? 100 : 0;
-  }
-
-  const totalAttempts = (successCount || 0) + (failedCount || 0);
-  
-  if (totalAttempts === 0) {
-    return 0;
-  }
-
-  return Math.round(((successCount || 0) / totalAttempts) * 100 * 10) / 10; // Round to 1 decimal
-}
-
-/**
- * Get all dashboard statistics
- */
-export async function getDashboardStats(): Promise<DashboardStats> {
-  try {
-    const [activeUsers, authRequests, mfaAdoption, successRate] = await Promise.all([
-      getActiveUsersCount(),
-      getAuthRequestsCount(),
-      getMfaAdoptionRate(),
-      getSuccessRate(),
-    ]);
-
-    return {
-      activeUsers,
-      authRequests,
-      mfaAdoption,
-      successRate,
-    };
-  } catch (error) {
-    console.error('Error getting dashboard stats:', error);
-    // Return default values on error
-    return {
-      activeUsers: 0,
-      authRequests: 0,
-      mfaAdoption: 0,
-      successRate: 0,
-    };
   }
 }
 
