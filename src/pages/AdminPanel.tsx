@@ -1,10 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
-<<<<<<< HEAD
 import { Users, Shield, Activity, Search, MoreVertical, CheckCircle, XCircle, Loader2, Edit, Key, UserX, UserCheck, Filter, X } from 'lucide-react';
-=======
-import { Users, Shield, Activity, Search, MoreVertical, CheckCircle, XCircle, Loader2, AlertTriangle } from 'lucide-react';
->>>>>>> 0a1eb77ec4824a157bc10dbecb418f4dfac42964
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -44,34 +40,13 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-<<<<<<< HEAD
 import { getClientIpAddress, getCachedClientIp } from '@/lib/ip-address';
 import { sendEmailOtp } from '@/lib/email-otp';
 import { Badge } from '@/components/ui/badge';
-=======
-
-interface MockUser {
-  id: string;
-  email: string;
-  role: UserRole;
-  mfaEnabled: boolean;
-  status: 'active' | 'inactive';
-  lastLogin: string;
-}
-
-const mockUsersList: MockUser[] = [
-  { id: '1', email: 'admin@example.com', role: 'Admin', mfaEnabled: true, status: 'active', lastLogin: '2 min ago' },
-  { id: '2', email: 'john@example.com', role: 'StandardUser', mfaEnabled: true, status: 'active', lastLogin: '1 hour ago' },
-  { id: '3', email: 'sarah@example.com', role: 'StandardUser', mfaEnabled: false, status: 'active', lastLogin: '3 hours ago' },
-  { id: '4', email: 'mike@example.com', role: 'RestrictedUser', mfaEnabled: false, status: 'inactive', lastLogin: '2 days ago' },
-  { id: '5', email: 'jane@example.com', role: 'Admin', mfaEnabled: true, status: 'active', lastLogin: '5 hours ago' },
-];
->>>>>>> 0a1eb77ec4824a157bc10dbecb418f4dfac42964
 
 export default function AdminPanel() {
   const { isAuthenticated, user, isLoading } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
-<<<<<<< HEAD
   const [activeTab, setActiveTab] = useState<'users' | 'logs'>('users');
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [usersList, setUsersList] = useState<User[]>([]);
@@ -347,42 +322,6 @@ export default function AdminPanel() {
       </div>
     );
   }
-=======
-  const [activeTab, setActiveTab] = useState<'users' | 'logs' | 'failed-attempts'>('users');
-  const [auditLogs, setAuditLogs] = useState<any[]>([]);
-  const [usersList, setUsersList] = useState<any[]>([]);
-  const [failedAttempts, setFailedAttempts] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [logsLoading, setLogsLoading] = useState(false);
-  const [attemptsLoading, setAttemptsLoading] = useState(false);
-  const { toast } = useToast();
-  
-  // Dialog states
-  const [roleChangeDialog, setRoleChangeDialog] = useState<{ open: boolean; userId: string | null; currentRole: UserRole | null }>({
-    open: false,
-    userId: null,
-    currentRole: null,
-  });
-  const [editUserDialog, setEditUserDialog] = useState<{ open: boolean; userId: string | null; currentEmail: string | null }>({
-    open: false,
-    userId: null,
-    currentEmail: null,
-  });
-  const [deleteUserDialog, setDeleteUserDialog] = useState<{ open: boolean; userId: string | null; userEmail: string | null }>({
-    open: false,
-    userId: null,
-    userEmail: null,
-  });
-  const [resetPasswordDialog, setResetPasswordDialog] = useState<{ open: boolean; userId: string | null; userEmail: string | null }>({
-    open: false,
-    userId: null,
-    userEmail: null,
-  });
-  
-  const [newRole, setNewRole] = useState<UserRole>('StandardUser');
-  const [newEmail, setNewEmail] = useState('');
-  const [resetToken, setResetToken] = useState<string | null>(null);
->>>>>>> 0a1eb77ec4824a157bc10dbecb418f4dfac42964
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
@@ -404,7 +343,6 @@ export default function AdminPanel() {
     );
   }
 
-<<<<<<< HEAD
   // Filter users based on all criteria
   const filteredUsers = usersList.filter((u) => {
     // Search filter
@@ -427,43 +365,6 @@ export default function AdminPanel() {
     
     return matchesSearch && matchesRole && matchesMfa && matchesStatus;
   });
-=======
-  // Load users and audit logs
-  useEffect(() => {
-    const loadData = async () => {
-      if (activeTab === 'users') {
-        try {
-          setLoading(true);
-          const users = await api.getAllUsers();
-          setUsersList(users);
-        } catch (error) {
-          console.error('Failed to load users:', error);
-        } finally {
-          setLoading(false);
-        }
-      } else if (activeTab === 'logs') {
-        try {
-          setLogsLoading(true);
-          const logs = await api.getAuditLogs(100);
-          setAuditLogs(logs);
-        } catch (error) {
-          console.error('Failed to load audit logs:', error);
-        } finally {
-          setLogsLoading(false);
-        }
-      } else if (activeTab === 'failed-attempts') {
-        try {
-          setAttemptsLoading(true);
-          const attempts = await api.getFailedLoginAttempts(100);
-          setFailedAttempts(attempts);
-        } catch (error) {
-          console.error('Failed to load failed login attempts:', error);
-        } finally {
-          setAttemptsLoading(false);
-        }
-      }
-    };
->>>>>>> 0a1eb77ec4824a157bc10dbecb418f4dfac42964
 
   // Filter audit logs based on criteria
   const getDateFilterStart = () => {
@@ -847,7 +748,6 @@ export default function AdminPanel() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-<<<<<<< HEAD
                                 <DropdownMenuItem onClick={() => handleEditUser(u)}>
                                   <Edit className="h-4 w-4 mr-2" />
                                   Edit User
@@ -875,39 +775,6 @@ export default function AdminPanel() {
                                       Activate
                                     </>
                                   )}
-=======
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    setEditUserDialog({ open: true, userId: u.id, currentEmail: u.email });
-                                    setNewEmail(u.email);
-                                  }}
-                                >
-                                  Edit User
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    setRoleChangeDialog({ open: true, userId: u.id, currentRole: u.role });
-                                    setNewRole(u.role);
-                                  }}
-                                >
-                                  Change Role
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    setResetPasswordDialog({ open: true, userId: u.id, userEmail: u.email });
-                                    setResetToken(null);
-                                  }}
-                                >
-                                  Reset Password
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  className="text-destructive"
-                                  onClick={() => {
-                                    setDeleteUserDialog({ open: true, userId: u.id, userEmail: u.email });
-                                  }}
-                                >
-                                  Delete User
->>>>>>> 0a1eb77ec4824a157bc10dbecb418f4dfac42964
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
