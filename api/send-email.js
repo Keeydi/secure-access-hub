@@ -82,12 +82,30 @@ export default async function handler(req, res) {
       fromEmail = 'SecureAuth <onboarding@resend.dev>';
     }
 
+    // Check if we're in test mode (using onboarding@resend.dev)
+    // Resend test accounts can only send to the account owner's email
+    const isTestMode = fromEmail.includes('onboarding@resend.dev') || fromEmail === 'onboarding@resend.dev';
+    const testEmail = process.env.RESEND_TEST_EMAIL || 'darnaylakarl@gmail.com';
+    
+    // In test mode, only send to the verified test email
+    const recipientEmail = isTestMode ? testEmail : to;
+    
+    if (isTestMode && to !== testEmail) {
+      console.warn(`Resend test mode: Redirecting email from ${to} to ${testEmail}`);
+      // Log the original recipient for debugging
+      console.log(`Original recipient: ${to}, OTP code would be sent to: ${testEmail}`);
+    }
+
     // Send email via Resend
     const { data, error } = await resend.emails.send({
       from: fromEmail,
-      to,
-      subject,
-      html,
+      to: recipientEmail,
+      subject: isTestMode && to !== testEmail 
+        ? `[TEST MODE - Original: ${to}] ${subject}`
+        : subject,
+      html: isTestMode && to !== testEmail
+        ? `<p><strong>TEST MODE:</strong> This email was originally intended for ${to}</p><br>${html}`
+        : html,
     });
 
     if (error) {
