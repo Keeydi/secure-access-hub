@@ -7,6 +7,7 @@ import { generateTotpSecret, generateTotpUri, generateQRCode, verifyTotp } from 
 import { generateEmailOtp, sendEmailOtp } from '@/lib/email-otp';
 import { checkLoginRateLimit, getRateLimitErrorMessage } from '@/lib/rate-limit';
 import { checkSessionTimeout, getTimeUntilExpiry, SESSION_TIMEOUT_MS } from '@/lib/session-timeout';
+import { getClientIpAddress, getCachedClientIp } from '@/lib/ip-address';
 import { supabase } from '@/lib/supabase';
 import { getClientIpAddress, getCachedClientIp } from '@/lib/ip-address';
 
@@ -151,7 +152,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             storedRefreshToken
           );
 
-<<<<<<< HEAD
           if (sessionCheck.isValid) {
             // Update tokens if refreshed
             const finalAccessToken = sessionCheck.accessToken || storedAccessToken;
@@ -182,15 +182,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       setIsLoading(false);
       sessionLoadedRef.current = true;
-=======
-  // Helper to get client IP and user agent
-  const getClientInfo = async () => {
-    const { getClientIpAddress } = await import('@/lib/ip-address');
-    const ipAddress = await getClientIpAddress();
-    return {
-      ipAddress,
-      userAgent: navigator.userAgent,
->>>>>>> 0a1eb77ec4824a157bc10dbecb418f4dfac42964
     };
 
     loadSession();
@@ -319,10 +310,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (isValid) {
       setMfaVerified(true);
       sessionStorage.setItem(SESSION_MFA_VERIFIED_KEY, 'true');
-<<<<<<< HEAD
       setIsLoading(false); // Set loading to false after MFA verification
-=======
->>>>>>> 0a1eb77ec4824a157bc10dbecb418f4dfac42964
       const { ipAddress, userAgent } = await getClientInfo();
       await api.createAuditLog(user.id, `MFA verified (${type})`, ipAddress, userAgent);
       
@@ -356,31 +344,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return false;
   };
 
-<<<<<<< HEAD
   /**
    * Send email verification OTP for registration
    */
   const sendRegistrationOtp = async (email: string, password: string): Promise<boolean> => {
-=======
-  const logout = async () => {
-    const storedAccessToken = sessionStorage.getItem(SESSION_ACCESS_TOKEN_KEY);
-    
-    if (user && storedAccessToken) {
-      try {
-        // Delete session from database
-        await api.deleteSession(storedAccessToken);
-        const { ipAddress, userAgent } = await getClientInfo();
-        await api.createAuditLog(user.id, 'User logout', ipAddress, userAgent);
-      } catch (error) {
-        console.error('Error during logout:', error);
-      }
-    }
-    
-    clearSession();
-  };
-
-  const register = async (email: string, password: string) => {
->>>>>>> 0a1eb77ec4824a157bc10dbecb418f4dfac42964
     // Check if user already exists
     const existingUser = await api.getUserByEmail(email);
     if (existingUser) {
@@ -390,7 +357,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Hash password using bcrypt
     const passwordHash = await hashPassword(password);
     
-<<<<<<< HEAD
     // Generate OTP code
     const code = generateEmailOtp();
     
@@ -420,8 +386,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error('Invalid or expired verification code');
     }
 
-=======
->>>>>>> 0a1eb77ec4824a157bc10dbecb418f4dfac42964
     const { ipAddress, userAgent } = await getClientInfo();
     
     try {
