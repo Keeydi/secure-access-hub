@@ -33,13 +33,31 @@ export interface EmailConfig {
 const isDevelopment = import.meta.env.DEV;
 const isProduction = import.meta.env.PROD;
 
+// Get API endpoint from env, but filter out localhost URLs in production
+const getApiEndpoint = () => {
+  const envEndpoint = import.meta.env.VITE_EMAIL_API_ENDPOINT;
+  
+  // If no endpoint is set, use default relative path
+  if (!envEndpoint) {
+    return '/api/send-email';
+  }
+  
+  // If it's a localhost URL and we're in production, ignore it and use default
+  if (isProduction && envEndpoint.includes('localhost')) {
+    console.warn('Localhost API endpoint detected in production, using default /api/send-email');
+    return '/api/send-email';
+  }
+  
+  return envEndpoint;
+};
+
 const defaultEmailConfig: EmailConfig = {
   from: 'noreply@secureauth.com',
   subject: 'Your SecureAuth Verification Code',
   // In development, default to mock unless explicitly set to resend
   service: import.meta.env.VITE_EMAIL_SERVICE || (isDevelopment ? 'mock' : 'resend'),
   // Use relative path for Vercel serverless function (works in both dev and prod)
-  apiEndpoint: import.meta.env.VITE_EMAIL_API_ENDPOINT || '/api/send-email',
+  apiEndpoint: getApiEndpoint(),
 };
 
 /**
