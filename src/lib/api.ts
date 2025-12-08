@@ -777,3 +777,74 @@ export async function updateUserPassword(
   }
 }
 
+/**
+ * Get dashboard statistics
+ */
+export async function getDashboardStats(): Promise<{
+  activeUsers: number;
+  authRequests: number;
+  mfaAdoption: number;
+  successRate: number;
+}> {
+  // Get active users count
+  const { count: activeUsersCount, error: usersError } = await supabase
+    .from('users')
+    .select('*', { count: 'exact', head: true })
+    .eq('is_active', true);
+
+  const activeUsers = usersError ? 0 : (activeUsersCount || 0);
+
+  // Get auth requests count (from audit logs - last 30 days)
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  const { count: authRequestsCount, error: logsError } = await supabase
+    .from('audit_logs')
+    .select('*', { count: 'exact', head: true })
+    .in('action', ['User login', 'User registration', 'MFA verified'])
+    .gte('created_at', thirtyDaysAgo.toISOString());
+
+  const authRequests = logsError ? 0 : (authRequestsCount || 0);
+
+  // Get MFA adoption rate
+  const { count: totalUsersCount } = await supabase
+    .from('users')
+    .select('*', { count: 'exact', head: true })
+    .eq('is_active', true);
+
+  const { count: mfaUsersCount } = await supabase
+    .from('users')
+    .select('*', { count: 'exact', head: true })
+    .eq('is_active', true)
+    .eq('mfa_enabled', true);
+
+  const totalUsers = totalUsersCount || 1; // Avoid division by zero
+  const mfaUsers = mfaUsersCount || 0;
+  const mfaAdoption = totalUsers > 0 ? (mfaUsers / totalUsers) * 100 : 0;
+
+  // Get success rate (successful logins vs failed attempts - last 30 days)
+  const { count: successfulLoginsCount } = await supabase
+    .from('audit_logs')
+    .select('*', { count: 'exact', head: true })
+    .eq('action', 'User login')
+    .gte('created_at', thirtyDaysAgo.toISOString());
+
+  const { count: failedAttemptsCount } = await supabase
+    .from('failed_login_attempts')
+    .select('*', { count: 'exact', head: true })
+    .eq('success', false)
+    .gte('attempted_at', thirtyDaysAgo.toISOString());
+
+  const successfulLogins = successfulLoginsCount || 0;
+  const failedAttempts = failedAttemptsCount || 0;
+  const totalAuthAttempts = successfulLogins + failedAttempts;
+  const successRate = totalAuthAttempts > 0 ? (successfulLogins / totalAuthAttempts) * 100 : 0;
+
+  return {
+    activeUsers,
+    authRequests,
+    mfaAdoption,
+    successRate,
+  };
+}
+
