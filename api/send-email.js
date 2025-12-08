@@ -15,15 +15,8 @@
 import formData from 'form-data';
 import Mailgun from 'mailgun.js';
 
-// Initialize Mailgun client
-let mg;
-if (process.env.MAILGUN_API_KEY) {
-  const mailgun = new Mailgun(formData);
-  mg = mailgun.client({
-    username: 'api',
-    key: process.env.MAILGUN_API_KEY,
-  });
-}
+// Initialize Mailgun client - will be initialized in handler
+let mg = null;
 
 export default async function handler(req, res) {
   // Only allow POST requests
@@ -84,9 +77,18 @@ export default async function handler(req, res) {
     // Initialize Mailgun client if not already initialized
     if (!mg) {
       const mailgun = new Mailgun(formData);
+      
+      // Mailgun API key format: can be with or without 'key-' prefix
+      let apiKey = process.env.MAILGUN_API_KEY.trim();
+      
+      // If key doesn't start with 'key-', add it (mailgun.js expects it)
+      if (!apiKey.startsWith('key-')) {
+        apiKey = `key-${apiKey}`;
+      }
+      
       mg = mailgun.client({
         username: 'api',
-        key: process.env.MAILGUN_API_KEY,
+        key: apiKey,
       });
     }
 
