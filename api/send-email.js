@@ -40,19 +40,46 @@ function getTransporter() {
     throw new Error('SMTP_PASS environment variable is missing');
   }
 
-  // Create transporter
+  // Create transporter with trimmed and validated values
+  const smtpHost = (process.env.SMTP_HOST || '').trim();
+  const smtpPort = parseInt((process.env.SMTP_PORT || '587').trim(), 10);
+  const smtpSecure = (process.env.SMTP_SECURE || 'false').trim() === 'true' || smtpPort === 465;
+  const smtpUser = (process.env.SMTP_USER || '').trim();
+  const smtpPass = (process.env.SMTP_PASS || '').trim();
+
+  // Validate hostname
+  if (!smtpHost || smtpHost.length === 0) {
+    throw new Error('SMTP_HOST is empty or not set');
+  }
+
+  // Validate hostname format (basic check)
+  if (!/^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(smtpHost)) {
+    throw new Error(`Invalid SMTP_HOST format: ${smtpHost}`);
+  }
+
+  console.log('Creating SMTP transporter:', {
+    host: smtpHost,
+    port: smtpPort,
+    secure: smtpSecure,
+    user: smtpUser ? `${smtpUser.substring(0, 3)}***` : 'not set',
+  });
+
   transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT, 10),
-    secure: process.env.SMTP_SECURE === 'true' || process.env.SMTP_PORT === '465',
+    host: smtpHost,
+    port: smtpPort,
+    secure: smtpSecure,
     auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
+      user: smtpUser,
+      pass: smtpPass,
     },
     // Additional options for better compatibility
     tls: {
       rejectUnauthorized: false, // For self-signed certificates
     },
+    // Connection timeout
+    connectionTimeout: 10000, // 10 seconds
+    greetingTimeout: 10000,
+    socketTimeout: 10000,
   });
 
   return transporter;
