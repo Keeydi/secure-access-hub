@@ -63,9 +63,28 @@ export default async function handler(req, res) {
       });
     }
 
+    // Get from email - ensure proper format
+    let fromEmail = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
+    
+    // Validate and format the from email
+    // Resend accepts: "email@example.com" or "Name <email@example.com>"
+    if (!fromEmail.includes('<') && !fromEmail.includes('@')) {
+      // If it's just a name without email, use default
+      fromEmail = 'SecureAuth <onboarding@resend.dev>';
+    } else if (!fromEmail.includes('<') && fromEmail.includes('@')) {
+      // If it's just an email, use it as is
+      fromEmail = fromEmail.trim();
+    } else if (fromEmail.includes('<') && fromEmail.includes('>')) {
+      // If it's already in "Name <email>" format, use it as is
+      fromEmail = fromEmail.trim();
+    } else {
+      // Fallback to default
+      fromEmail = 'SecureAuth <onboarding@resend.dev>';
+    }
+
     // Send email via Resend
     const { data, error } = await resend.emails.send({
-      from: process.env.RESEND_FROM_EMAIL || 'SecureAuth <onboarding@resend.dev>',
+      from: fromEmail,
       to,
       subject,
       html,
