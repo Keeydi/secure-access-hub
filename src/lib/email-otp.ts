@@ -51,11 +51,29 @@ const getApiEndpoint = () => {
   return envEndpoint;
 };
 
+// Get email service from env, with proper defaults
+const getEmailService = (): 'resend' | 'mock' => {
+  const envService = import.meta.env.VITE_EMAIL_SERVICE;
+  
+  // If explicitly set to 'resend', use it
+  if (envService === 'resend') {
+    return 'resend';
+  }
+  
+  // If explicitly set to 'mock', use it
+  if (envService === 'mock') {
+    return 'mock';
+  }
+  
+  // Default: use 'resend' in production, 'mock' in development
+  return isProduction ? 'resend' : 'mock';
+};
+
 const defaultEmailConfig: EmailConfig = {
   from: 'noreply@secureauth.com',
   subject: 'Your SecureAuth Verification Code',
-  // In development, default to mock unless explicitly set to resend
-  service: import.meta.env.VITE_EMAIL_SERVICE || (isDevelopment ? 'mock' : 'resend'),
+  // Use the service determined by getEmailService
+  service: getEmailService(),
   // Use relative path for Vercel serverless function (works in both dev and prod)
   apiEndpoint: getApiEndpoint(),
 };
