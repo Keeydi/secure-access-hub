@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode, useEffect, useRef } from 'react';
+import { createContext, useContext, useState, ReactNode, useEffect, useRef, useCallback } from 'react';
 import * as api from '@/lib/api';
 import type { User } from '@/lib/api';
 import { hashPassword, comparePassword } from '@/lib/password';
@@ -7,6 +7,8 @@ import { generateTotpSecret, generateTotpUri, generateQRCode, verifyTotp } from 
 import { generateEmailOtp, sendEmailOtp } from '@/lib/email-otp';
 import { checkLoginRateLimit, getRateLimitErrorMessage } from '@/lib/rate-limit';
 import { checkSessionTimeout, getTimeUntilExpiry, SESSION_TIMEOUT_MS } from '@/lib/session-timeout';
+import { supabase } from '@/lib/supabase';
+import { getClientIpAddress, getCachedClientIp } from '@/lib/ip-address';
 
 export type UserRole = 'Admin' | 'StandardUser' | 'RestrictedUser';
 
@@ -17,10 +19,12 @@ interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   mfaVerified: boolean;
+  isLoading: boolean; // Track if session is being restored
   login: (email: string, password: string) => Promise<{ requiresMfa: boolean }>;
   verifyMfa: (code: string, type?: 'totp' | 'email') => Promise<boolean>;
   logout: () => void;
-  register: (email: string, password: string) => Promise<void>;
+  sendRegistrationOtp: (email: string, password: string) => Promise<boolean>;
+  verifyRegistrationOtp: (email: string, code: string) => Promise<void>;
   enableMfa: () => void;
   disableMfa: () => void;
   setupTotp: () => Promise<{ secret: string; qrCode: string; uri: string }>;
@@ -40,62 +44,60 @@ const SESSION_REFRESH_TOKEN_KEY = 'auth_refresh_token';
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [mfaVerified, setMfaVerified] = useState(false);
+  const [isLoading, setIsLoading] = useState(true); // Start as loading
   const sessionCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const sessionLoadedRef = useRef(false); // Track if session has been loaded
 
-  // Load user and validate token on mount
-  useEffect(() => {
-    const loadSession = async () => {
-      const storedUser = sessionStorage.getItem(SESSION_USER_KEY);
-      const storedAccessToken = sessionStorage.getItem(SESSION_ACCESS_TOKEN_KEY);
-      const storedRefreshToken = sessionStorage.getItem(SESSION_REFRESH_TOKEN_KEY);
-      const storedMfaVerified = sessionStorage.getItem(SESSION_MFA_VERIFIED_KEY);
-      
-      if (storedUser && storedAccessToken) {
-        try {
-          // Check session timeout and refresh if needed
-          const sessionCheck = await checkSessionTimeout(
-            storedAccessToken,
-            storedRefreshToken
-          );
-
-          if (sessionCheck.isValid) {
-            // Update tokens if refreshed
-            if (sessionCheck.accessToken) {
-              sessionStorage.setItem(SESSION_ACCESS_TOKEN_KEY, sessionCheck.accessToken);
-              if (sessionCheck.refreshToken) {
-                sessionStorage.setItem(SESSION_REFRESH_TOKEN_KEY, sessionCheck.refreshToken);
-              }
-            }
-
-            const user = JSON.parse(storedUser);
-            setUser(user);
-            setMfaVerified(storedMfaVerified === 'true');
-
-            // Start session timeout monitoring
-            startSessionTimeoutMonitoring(storedAccessToken, storedRefreshToken);
-          } else {
-            // Session expired, clear it
-            clearSession();
-          }
-        } catch (error) {
-          console.error('Failed to load session:', error);
-          clearSession();
-        }
-      }
+  // Helper to get client IP and user agent
+  const getClientInfo = async () => {
+    // Try to get cached IP first (synchronous)
+    let ipAddress = getCachedClientIp();
+    
+    // If no cached IP, fetch it (async)
+    if (!ipAddress) {
+      ipAddress = await getClientIpAddress();
+    }
+    
+    return {
+      ipAddress: ipAddress || null,
+      userAgent: navigator.userAgent,
     };
+  };
 
-    loadSession();
+  const clearSession = () => {
+    // Clear interval if running
+    if (sessionCheckIntervalRef.current) {
+      clearInterval(sessionCheckIntervalRef.current);
+      sessionCheckIntervalRef.current = null;
+    }
 
-    // Cleanup on unmount
-    return () => {
-      if (sessionCheckIntervalRef.current) {
-        clearInterval(sessionCheckIntervalRef.current);
+    sessionStorage.removeItem(SESSION_USER_KEY);
+    sessionStorage.removeItem(SESSION_MFA_VERIFIED_KEY);
+    sessionStorage.removeItem(SESSION_ACCESS_TOKEN_KEY);
+    sessionStorage.removeItem(SESSION_REFRESH_TOKEN_KEY);
+    setUser(null);
+    setMfaVerified(false);
+  };
+
+  const logout = useCallback(async () => {
+    const storedAccessToken = sessionStorage.getItem(SESSION_ACCESS_TOKEN_KEY);
+    
+    if (user && storedAccessToken) {
+      try {
+        // Delete session from database
+        await api.deleteSession(storedAccessToken);
+        const { ipAddress, userAgent } = await getClientInfo();
+        await api.createAuditLog(user.id, 'User logout', ipAddress, userAgent);
+      } catch (error) {
+        console.error('Error during logout:', error);
       }
-    };
-  }, []);
+    }
+    
+    clearSession();
+  }, [user]);
 
   // Start monitoring session timeout
-  const startSessionTimeoutMonitoring = (
+  const startSessionTimeoutMonitoring = useCallback((
     accessToken: string,
     refreshToken: string | null
   ) => {
@@ -125,33 +127,75 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
     }, 60 * 1000); // Check every minute
-  };
+  }, [logout]);
 
-  const clearSession = () => {
-    // Clear interval if running
-    if (sessionCheckIntervalRef.current) {
-      clearInterval(sessionCheckIntervalRef.current);
-      sessionCheckIntervalRef.current = null;
+  // Load user and validate token on mount (only once)
+  useEffect(() => {
+    // Prevent multiple runs
+    if (sessionLoadedRef.current) {
+      return;
     }
 
-    sessionStorage.removeItem(SESSION_USER_KEY);
-    sessionStorage.removeItem(SESSION_MFA_VERIFIED_KEY);
-    sessionStorage.removeItem(SESSION_ACCESS_TOKEN_KEY);
-    sessionStorage.removeItem(SESSION_REFRESH_TOKEN_KEY);
-    setUser(null);
-    setMfaVerified(false);
-  };
+    const loadSession = async () => {
+      setIsLoading(true);
+      const storedUser = sessionStorage.getItem(SESSION_USER_KEY);
+      const storedAccessToken = sessionStorage.getItem(SESSION_ACCESS_TOKEN_KEY);
+      const storedRefreshToken = sessionStorage.getItem(SESSION_REFRESH_TOKEN_KEY);
+      const storedMfaVerified = sessionStorage.getItem(SESSION_MFA_VERIFIED_KEY);
+      
+      if (storedUser && storedAccessToken) {
+        try {
+          // Check session timeout and refresh if needed
+          const sessionCheck = await checkSessionTimeout(
+            storedAccessToken,
+            storedRefreshToken
+          );
 
-  // Helper to get client IP and user agent
-  const getClientInfo = () => {
-    return {
-      ipAddress: null, // Will be captured server-side or via API
-      userAgent: navigator.userAgent,
+          if (sessionCheck.isValid) {
+            // Update tokens if refreshed
+            const finalAccessToken = sessionCheck.accessToken || storedAccessToken;
+            const finalRefreshToken = sessionCheck.refreshToken || storedRefreshToken;
+            
+            if (sessionCheck.accessToken) {
+              sessionStorage.setItem(SESSION_ACCESS_TOKEN_KEY, finalAccessToken);
+              if (sessionCheck.refreshToken) {
+                sessionStorage.setItem(SESSION_REFRESH_TOKEN_KEY, finalRefreshToken);
+              }
+            }
+
+            const user = JSON.parse(storedUser);
+            setUser(user);
+            setMfaVerified(storedMfaVerified === 'true');
+
+            // Start session timeout monitoring
+            startSessionTimeoutMonitoring(finalAccessToken, finalRefreshToken);
+          } else {
+            // Session expired, clear it
+            clearSession();
+          }
+        } catch (error) {
+          console.error('Failed to load session:', error);
+          clearSession();
+        }
+      }
+      
+      setIsLoading(false);
+      sessionLoadedRef.current = true;
     };
-  };
+
+    loadSession();
+
+    // Cleanup on unmount
+    return () => {
+      if (sessionCheckIntervalRef.current) {
+        clearInterval(sessionCheckIntervalRef.current);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run once on mount
 
   const login = async (email: string, password: string): Promise<{ requiresMfa: boolean }> => {
-    const { ipAddress, userAgent } = getClientInfo();
+    const { ipAddress, userAgent } = await getClientInfo();
     
     // Check rate limit before attempting login
     const rateLimit = await checkLoginRateLimit(email);
@@ -197,7 +241,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     // Generate JWT tokens
-    const tokenPair = generateTokenPair(userData.id, userData.email, userData.role);
+    const tokenPair = await generateTokenPair(userData.id, userData.email, userData.role);
     
     // Store session in database
     await api.createSession(
@@ -222,12 +266,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setMfaVerified(false);
       sessionStorage.setItem(SESSION_MFA_VERIFIED_KEY, 'false');
       setUser(userData);
+      setIsLoading(false); // Set loading to false after login
       return { requiresMfa: true };
     }
     
     setMfaVerified(true);
     sessionStorage.setItem(SESSION_MFA_VERIFIED_KEY, 'true');
     setUser(userData);
+    setIsLoading(false); // Set loading to false after login
     
     // Start session timeout monitoring
     startSessionTimeoutMonitoring(tokenPair.accessToken, tokenPair.refreshToken);
@@ -260,11 +306,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (isValid) {
       setMfaVerified(true);
       sessionStorage.setItem(SESSION_MFA_VERIFIED_KEY, 'true');
-      const { ipAddress, userAgent } = getClientInfo();
+      setIsLoading(false); // Set loading to false after MFA verification
+      const { ipAddress, userAgent } = await getClientInfo();
       await api.createAuditLog(user.id, `MFA verified (${type})`, ipAddress, userAgent);
       
       // Generate new tokens after MFA verification
-      const tokenPair = generateTokenPair(user.id, user.email, user.role);
+      const tokenPair = await generateTokenPair(user.id, user.email, user.role);
       const storedAccessToken = sessionStorage.getItem(SESSION_ACCESS_TOKEN_KEY);
       
       // Update session in database
@@ -293,24 +340,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return false;
   };
 
-  const logout = async () => {
-    const storedAccessToken = sessionStorage.getItem(SESSION_ACCESS_TOKEN_KEY);
-    
-    if (user && storedAccessToken) {
-      try {
-        // Delete session from database
-        await api.deleteSession(storedAccessToken);
-        const { ipAddress, userAgent } = getClientInfo();
-        await api.createAuditLog(user.id, 'User logout', ipAddress, userAgent);
-      } catch (error) {
-        console.error('Error during logout:', error);
-      }
-    }
-    
-    clearSession();
-  };
-
-  const register = async (email: string, password: string) => {
+  /**
+   * Send email verification OTP for registration
+   */
+  const sendRegistrationOtp = async (email: string, password: string): Promise<boolean> => {
     // Check if user already exists
     const existingUser = await api.getUserByEmail(email);
     if (existingUser) {
@@ -320,35 +353,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Hash password using bcrypt
     const passwordHash = await hashPassword(password);
     
-    const { ipAddress, userAgent } = getClientInfo();
+    // Generate OTP code
+    const code = generateEmailOtp();
+    
+    // Set expiry to 2 minutes (120 seconds)
+    const expiresAt = new Date();
+    expiresAt.setSeconds(expiresAt.getSeconds() + 120);
+
+    // Store OTP with password hash temporarily
+    await api.createEmailVerificationOtp(email, code, passwordHash, expiresAt);
+
+    // Send email
+    const sent = await sendEmailOtp(email, code, {
+      subject: 'Verify Your Email - SecureAuth Registration',
+    });
+    
+    return sent;
+  };
+
+  /**
+   * Verify email OTP and create user account
+   */
+  const verifyRegistrationOtp = async (email: string, code: string): Promise<void> => {
+    // Verify OTP and get password hash
+    const verification = await api.verifyEmailVerificationOtp(email, code);
+    
+    if (!verification) {
+      throw new Error('Invalid or expired verification code');
+    }
+
+    const { ipAddress, userAgent } = await getClientInfo();
     
     try {
-      const newUser = await api.createUser(email, passwordHash, 'StandardUser');
+      // Create user account
+      const newUser = await api.createUser(email, verification.passwordHash, 'StandardUser');
       
-      // Generate JWT tokens
-      const tokenPair = generateTokenPair(newUser.id, newUser.email, newUser.role);
-      
-      // Store session in database
-      await api.createSession(
-        newUser.id,
-        tokenPair.accessToken,
-        tokenPair.refreshToken,
-        tokenPair.expiresAt,
-        ipAddress,
-        userAgent
-      );
-      
-      // Store in session storage
-      sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify(newUser));
-      sessionStorage.setItem(SESSION_ACCESS_TOKEN_KEY, tokenPair.accessToken);
-      sessionStorage.setItem(SESSION_REFRESH_TOKEN_KEY, tokenPair.refreshToken);
-      sessionStorage.setItem(SESSION_MFA_VERIFIED_KEY, 'true');
-      
-      setUser(newUser);
-      setMfaVerified(true);
-      
+      // Create audit log for registration
       await api.createAuditLog(newUser.id, 'User registration', ipAddress, userAgent);
     } catch (error) {
+      console.error('Registration error:', error);
+      if (error instanceof Error) {
+        throw error;
+      }
       throw new Error('Registration failed. Please try again.');
     }
   };
@@ -384,7 +430,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const sent = await sendEmailOtp(user.email, code);
     
     if (sent) {
-      const { ipAddress, userAgent } = getClientInfo();
+      const { ipAddress, userAgent } = await getClientInfo();
       await api.createAuditLog(user.id, 'Email OTP sent', ipAddress, userAgent);
     }
 
@@ -400,14 +446,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const isValid = verifyTotp(code, secret);
     
     if (isValid) {
-      // Store the secret in database
-      await api.updateUserMfa(user.id, true, secret);
+      // Store the secret in database - explicitly set type to 'totp'
+      await api.updateUserMfa(user.id, true, secret, 'totp');
       
       const updatedUser = { ...user, mfaEnabled: true };
       setUser(updatedUser);
       sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify(updatedUser));
       
-      const { ipAddress, userAgent } = getClientInfo();
+      const { ipAddress, userAgent } = await getClientInfo();
       await api.createAuditLog(user.id, 'TOTP MFA enabled', ipAddress, userAgent);
       return true;
     }
@@ -424,14 +470,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const isValid = await api.verifyOtpCode(user.id, code, 'email');
     
     if (isValid) {
-      // Enable email OTP MFA
-      await api.updateUserMfa(user.id, true);
+      // Enable email OTP MFA - explicitly set type to 'email'
+      await api.updateUserMfa(user.id, true, null, 'email');
       
       const updatedUser = { ...user, mfaEnabled: true };
       setUser(updatedUser);
       sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify(updatedUser));
       
-      const { ipAddress, userAgent } = getClientInfo();
+      const { ipAddress, userAgent } = await getClientInfo();
       await api.createAuditLog(user.id, 'Email OTP MFA enabled', ipAddress, userAgent);
       return true;
     }
@@ -450,7 +496,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(updatedUser);
       sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify(updatedUser));
       
-      const { ipAddress, userAgent } = getClientInfo();
+      const { ipAddress, userAgent } = await getClientInfo();
       await api.createAuditLog(user.id, 'MFA enabled', ipAddress, userAgent);
     } catch (error) {
       throw new Error('Failed to enable MFA');
@@ -461,13 +507,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!user) return;
 
     try {
+      // Disable both TOTP and email OTP explicitly
       await api.updateUserMfa(user.id, false, null);
+      // Also explicitly clear both flags in database
+      const { error } = await supabase
+        .from('users')
+        .update({
+          mfa_enabled: false,
+          totp_enabled: false,
+          email_otp_enabled: false,
+          mfa_secret: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', user.id);
+      
+      if (error) {
+        throw error;
+      }
       
       const updatedUser = { ...user, mfaEnabled: false };
       setUser(updatedUser);
       sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify(updatedUser));
       
-      const { ipAddress, userAgent } = getClientInfo();
+      const { ipAddress, userAgent } = await getClientInfo();
       await api.createAuditLog(user.id, 'MFA disabled', ipAddress, userAgent);
     } catch (error) {
       throw new Error('Failed to disable MFA');
@@ -480,10 +542,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         isAuthenticated: !!user && mfaVerified,
         mfaVerified,
+        isLoading,
         login,
         verifyMfa,
         logout,
-        register,
+        sendRegistrationOtp,
+        verifyRegistrationOtp,
         enableMfa,
         disableMfa,
         setupTotp,
@@ -497,6 +561,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {

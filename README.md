@@ -1,73 +1,151 @@
-# Welcome to your Lovable project
+# Secure Access Hub
 
-## Project info
+A comprehensive Multi-Factor Authentication (MFA) and Access Control System for online business platforms.
 
-**URL**: https://lovable.dev/projects/4b02b3aa-9037-4a8e-832f-9776959262ac
+## Features
 
-## How can I edit this code?
+- **Multi-Factor Authentication (MFA)**
+  - Time-based One-Time Password (TOTP) via authenticator apps
+  - Email OTP verification
+  - Backup codes for account recovery
 
-There are several ways of editing your application.
+- **Role-Based Access Control**
+  - Admin, Standard User, and Restricted User roles
+  - Granular permissions and access management
 
-**Use Lovable**
+- **Security Features**
+  - Secure password hashing with bcrypt
+  - JWT-based authentication with refresh tokens
+  - Session management and timeout
+  - Rate limiting for login attempts
+  - Comprehensive audit logging
+  - IP address tracking
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/4b02b3aa-9037-4a8e-832f-9776959262ac) and start prompting.
+- **Admin Panel**
+  - User management (create, edit, deactivate)
+  - Role assignment and management
+  - Password reset functionality
+  - Audit log viewing and filtering
+  - Dashboard with real-time statistics
 
-Changes made via Lovable will be committed automatically to this repo.
+- **User Dashboard**
+  - MFA setup and management
+  - Account settings
+  - Security preferences
+  - Activity history
 
-**Use your preferred IDE**
+## Technologies
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+- **Frontend**: React 18, TypeScript, Vite
+- **UI Components**: shadcn/ui, Tailwind CSS
+- **Authentication**: JWT (jose library), bcryptjs
+- **Database**: Supabase (PostgreSQL)
+- **MFA**: otplib (TOTP), Email OTP
+- **Routing**: React Router v6
+- **State Management**: React Context API
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+## Getting Started
 
-Follow these steps:
+### Prerequisites
 
+- Node.js 18+ and npm
+- Supabase account and project
+- (Optional) Resend API key for email service
+
+### Installation
+
+1. Clone the repository:
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
 git clone <YOUR_GIT_URL>
+cd secure-access-hub
+```
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+2. Install dependencies:
+```sh
+npm install
+```
 
-# Step 3: Install the necessary dependencies.
-npm i
+3. Set up environment variables:
+Create a `.env` file in the root directory:
+```env
+VITE_SUPABASE_URL=your_supabase_url
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+VITE_JWT_SECRET=your_jwt_secret
+VITE_JWT_REFRESH_SECRET=your_jwt_refresh_secret
+VITE_EMAIL_SERVICE=resend
+VITE_EMAIL_API_ENDPOINT=http://localhost:3001/api/send-email
+```
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+4. Set up the database:
+- Run the SQL scripts in the `supabase/` directory to set up your database schema
+- Configure Row Level Security (RLS) policies as needed
+
+5. (Optional) Set up email service:
+- See `EMAIL_SERVICE_SETUP.md` for detailed instructions
+- Start the email server: `cd server && npm install && npm start`
+
+6. Start the development server:
+```sh
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+The application will be available at `http://localhost:8080`
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## Project Structure
 
-**Use GitHub Codespaces**
+```
+secure-access-hub/
+├── src/
+│   ├── components/     # Reusable UI components
+│   ├── contexts/       # React contexts (Auth, etc.)
+│   ├── lib/           # Utility functions and API clients
+│   ├── pages/         # Page components
+│   └── hooks/         # Custom React hooks
+├── supabase/          # Database schema and migrations
+├── server/            # Backend email service (optional)
+└── public/            # Static assets
+```
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## Scripts
 
-## What technologies are used for this project?
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm run preview` - Preview production build
+- `npm run lint` - Run ESLint
+- `npm run create-admin` - Create an admin user interactively
 
-This project is built with:
+## Deployment
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+### Vercel (Recommended)
 
-## How can I deploy this project?
+The project is configured for easy deployment to Vercel. See [VERCEL_DEPLOYMENT.md](./VERCEL_DEPLOYMENT.md) for detailed instructions.
 
-Simply open [Lovable](https://lovable.dev/projects/4b02b3aa-9037-4a8e-832f-9776959262ac) and click on Share -> Publish.
+Quick steps:
+1. Push your code to GitHub/GitLab/Bitbucket
+2. Import the project in Vercel
+3. Add environment variables in Vercel dashboard
+4. Deploy!
 
-## Can I connect a custom domain to my Lovable project?
+### Other Platforms
 
-Yes, you can!
+Build the project for production:
+```sh
+npm run build
+```
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+The `dist/` folder will contain the production-ready files that can be deployed to any static hosting service.
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+**Note**: For email functionality, you'll need to deploy the email service separately or use the included Vercel serverless function at `api/send-email.js`.
+
+## Security Considerations
+
+- All passwords are hashed using bcrypt
+- JWT tokens are signed with secure secrets
+- RLS policies protect database access
+- Rate limiting prevents brute force attacks
+- Audit logs track all security-relevant actions
+- MFA adds an extra layer of security
+
+## License
+
+This project is proprietary software. All rights reserved.

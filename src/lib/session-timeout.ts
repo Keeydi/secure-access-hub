@@ -25,10 +25,10 @@ export async function checkSessionTimeout(
   if (isTokenExpired(accessToken)) {
     // Try to refresh if refresh token exists
     if (refreshToken) {
-      const newTokenPair = refreshAccessToken(refreshToken);
+      const newTokenPair = await refreshAccessToken(refreshToken);
       if (newTokenPair) {
         // Update session in database
-        const payload = verifyAccessToken(accessToken);
+        const payload = await verifyAccessToken(newTokenPair.accessToken);
         if (payload) {
           try {
             // Delete old session

@@ -1,14 +1,12 @@
 /**
  * Email OTP utilities
  * 
- * Note: For production, integrate with an email service like:
- * - SendGrid
- * - AWS SES
- * - Mailgun
- * - Nodemailer with SMTP
+ * Email Service Options:
+ * - resend: Uses Resend API (requires backend API endpoint for security)
+ * - mock: Development mode (logs to console)
  * 
- * This implementation provides a structure that can be easily
- * swapped with a real email service.
+ * For production, set up a backend API endpoint to send emails
+ * to keep your API keys secure.
  */
 
 /**
@@ -27,14 +25,54 @@ export function generateEmailOtp(): string {
 export interface EmailConfig {
   from: string;
   subject: string;
-  service?: 'sendgrid' | 'ses' | 'smtp' | 'mock';
+  service?: 'resend' | 'mock';
+  apiEndpoint?: string; // Backend API endpoint for sending emails
 }
 
 const defaultEmailConfig: EmailConfig = {
   from: 'noreply@secureauth.com',
   subject: 'Your SecureAuth Verification Code',
-  service: 'mock', // Change to 'sendgrid', 'ses', etc. for production
+  service: import.meta.env.VITE_EMAIL_SERVICE || 'mock',
+  apiEndpoint: import.meta.env.VITE_EMAIL_API_ENDPOINT || '/api/send-email',
 };
+
+/**
+ * Send email via backend API endpoint
+ */
+async function sendEmailViaAPI(
+  email: string,
+  code: string,
+  subject: string,
+  htmlBody: string,
+  textBody: string
+): Promise<boolean> {
+  const apiEndpoint = defaultEmailConfig.apiEndpoint || '/api/send-email';
+  
+  try {
+    const response = await fetch(apiEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        to: email,
+        subject,
+        html: htmlBody,
+        text: textBody,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Failed to send email' }));
+      throw new Error(error.message || 'Failed to send email');
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Failed to send email via API:', error);
+    return false;
+  }
+}
 
 /**
  * Send OTP code via email
@@ -49,12 +87,18 @@ export async function sendEmailOtp(
   config: Partial<EmailConfig> = {}
 ): Promise<boolean> {
   const emailConfig = { ...defaultEmailConfig, ...config };
+  const htmlBody = formatEmailBody(code);
+  const textBody = formatEmailBodyText(code);
 
   try {
     switch (emailConfig.service) {
+      case 'resend':
+        // Use backend API endpoint to send email (recommended for production)
+        return await sendEmailViaAPI(email, code, emailConfig.subject, htmlBody, textBody);
+
       case 'mock':
+      default:
         // Mock email service - logs to console in development
-        // In production, replace with actual email service
         console.log(`[MOCK EMAIL] Sending OTP to ${email}: ${code}`);
         console.log(`Subject: ${emailConfig.subject}`);
         console.log(`Body: Your verification code is: ${code}`);
@@ -62,24 +106,6 @@ export async function sendEmailOtp(
         // Simulate network delay
         await new Promise((resolve) => setTimeout(resolve, 500));
         return true;
-
-      case 'sendgrid':
-        // TODO: Implement SendGrid integration
-        // const sgMail = require('@sendgrid/mail');
-        // sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-        // await sgMail.send({...});
-        throw new Error('SendGrid integration not yet implemented');
-
-      case 'ses':
-        // TODO: Implement AWS SES integration
-        throw new Error('AWS SES integration not yet implemented');
-
-      case 'smtp':
-        // TODO: Implement SMTP integration
-        throw new Error('SMTP integration not yet implemented');
-
-      default:
-        throw new Error(`Unknown email service: ${emailConfig.service}`);
     }
   } catch (error) {
     console.error('Failed to send email OTP:', error);
@@ -131,4 +157,3 @@ This code will expire in 2 minutes. Do not share this code with anyone.
 If you didn't request this code, please ignore this email.
   `.trim();
 }
-

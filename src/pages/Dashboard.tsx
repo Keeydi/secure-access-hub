@@ -1,17 +1,74 @@
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Navigate } from 'react-router-dom';
 import DashboardLayout from '@/components/DashboardLayout';
 import { Shield, Users, Key, TrendingUp } from 'lucide-react';
+import { getDashboardStats } from '@/lib/api';
 
-const stats = [
-  { label: 'Active Users', value: '2,847', icon: Users },
-  { label: 'Auth Requests', value: '14.2K', icon: Key },
-  { label: 'MFA Adoption', value: '67%', icon: Shield },
-  { label: 'Success Rate', value: '99.2%', icon: TrendingUp },
-];
+interface StatCard {
+  label: string;
+  value: string;
+  icon: typeof Users;
+}
 
 export default function Dashboard() {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, isLoading } = useAuth();
+  const [stats, setStats] = useState<StatCard[]>([
+    { label: 'Active Users', value: '...', icon: Users },
+    { label: 'Auth Requests', value: '...', icon: Key },
+    { label: 'MFA Adoption', value: '...', icon: Shield },
+    { label: 'Success Rate', value: '...', icon: TrendingUp },
+  ]);
+  const [statsLoading, setStatsLoading] = useState(true);
+
+  // Format number with commas and K/M suffixes
+  const formatNumber = (num: number): string => {
+    if (num >= 1000000) {
+      return (num / 1000000).toFixed(1) + 'M';
+    } else if (num >= 1000) {
+      return (num / 1000).toFixed(1) + 'K';
+    }
+    return num.toLocaleString();
+  };
+
+  // Format percentage
+  const formatPercentage = (num: number): string => {
+    return num.toFixed(1) + '%';
+  };
+
+  // Load dashboard statistics
+  useEffect(() => {
+    const loadStats = async () => {
+      try {
+        setStatsLoading(true);
+        const dashboardStats = await getDashboardStats();
+
+        setStats([
+          { label: 'Active Users', value: formatNumber(dashboardStats.activeUsers), icon: Users },
+          { label: 'Auth Requests', value: formatNumber(dashboardStats.authRequests), icon: Key },
+          { label: 'MFA Adoption', value: formatPercentage(dashboardStats.mfaAdoption), icon: Shield },
+          { label: 'Success Rate', value: formatPercentage(dashboardStats.successRate), icon: TrendingUp },
+        ]);
+      } catch (error) {
+        console.error('Failed to load dashboard stats:', error);
+        // Keep default "..." values on error
+      } finally {
+        setStatsLoading(false);
+      }
+    };
+
+    if (isAuthenticated) {
+      loadStats();
+    }
+  }, [isAuthenticated]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-muted-foreground">Loading...</div>
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
@@ -36,7 +93,9 @@ export default function Dashboard() {
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">{stat.label}</p>
-                  <p className="text-2xl font-bold text-foreground mt-1">{stat.value}</p>
+                  <p className={`text-2xl font-bold mt-1 ${statsLoading ? 'text-muted-foreground' : 'text-foreground'}`}>
+                    {statsLoading ? '...' : stat.value}
+                  </p>
                 </div>
                 <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
                   <stat.icon className="h-5 w-5 text-primary" />

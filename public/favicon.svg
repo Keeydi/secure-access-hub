@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="shieldGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#3b82f6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1e40af;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <!-- Shield Background -->
+  <path d="M32 4 L12 10 L12 30 C12 42 20 52 32 58 C44 52 52 42 52 30 L52 10 Z" 
+        fill="url(#shieldGradient)" 
+        stroke="#1e3a8a" 
+        stroke-width="2"/>
+  <!-- Lock Icon -->
+  <rect x="26" y="28" width="12" height="10" rx="2" fill="#ffffff" opacity="0.9"/>
+  <path d="M28 28 L28 24 C28 20 30 18 32 18 C34 18 36 20 36 24 L36 28" 
+        stroke="#ffffff" 
+        stroke-width="2" 
+        fill="none" 
+        stroke-linecap="round"/>
+  <circle cx="32" cy="33" r="2" fill="#3b82f6"/>
+</svg>
+

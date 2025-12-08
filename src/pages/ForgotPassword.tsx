@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import * as api from '@/lib/api';
 import { sendEmailOtp } from '@/lib/email-otp';
+import { getClientIpAddress, getCachedClientIp } from '@/lib/ip-address';
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState('');
@@ -46,8 +47,15 @@ export default function ForgotPassword() {
       );
 
       if (emailSent) {
+        // Get IP address for audit log
+        let ipAddress = getCachedClientIp();
+        if (!ipAddress) {
+          ipAddress = await getClientIpAddress();
+        }
+        const userAgent = navigator.userAgent;
+        
         // Create audit log
-        await api.createAuditLog(user.id, 'Password reset requested', null, null);
+        await api.createAuditLog(user.id, 'Password reset requested', ipAddress, userAgent);
         setSuccess(true);
       } else {
         setError('Failed to send reset email. Please try again.');

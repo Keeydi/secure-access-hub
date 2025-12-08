@@ -4,7 +4,22 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn('Supabase environment variables are not set. Please configure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY');
+  const errorMessage = `
+⚠️ Supabase configuration is missing!
+
+Please create a .env file in the root of your project with:
+VITE_SUPABASE_URL=your_supabase_url
+VITE_SUPABASE_ANON_KEY=your_anon_key
+
+See SUPABASE_SETUP.md for detailed instructions.
+  `.trim();
+  
+  console.error(errorMessage);
+  
+  // Throw a more helpful error
+  throw new Error(
+    'Supabase environment variables are not set. Please create a .env file with VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY. See SUPABASE_SETUP.md for instructions.'
+  );
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {

@@ -6,9 +6,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useToast } from '@/hooks/use-toast';
 import { generateBackupCodes } from '@/lib/api';
+import { generateTotpCode } from '@/lib/totp';
+import { generateTotpCode } from '@/lib/totp';
 
 export default function MfaSetup() {
-  const { isAuthenticated, user, disableMfa, setupTotp, setupEmailOtp, verifyTotpSetup, verifyEmailOtpSetup } = useAuth();
+  const { isAuthenticated, user, isLoading, disableMfa, setupTotp, setupEmailOtp, verifyTotpSetup, verifyEmailOtpSetup } = useAuth();
   const [step, setStep] = useState<'choose' | 'totp' | 'email' | 'backup' | 'complete'>('choose');
   const [verificationCode, setVerificationCode] = useState('');
   const [error, setError] = useState('');
@@ -19,10 +21,6 @@ export default function MfaSetup() {
   const [backupCodes, setBackupCodes] = useState<string[]>([]);
   const [emailOtpSent, setEmailOtpSent] = useState(false);
   const { toast } = useToast();
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
 
   // Initialize TOTP setup when step changes to 'totp'
   useEffect(() => {
@@ -72,9 +70,24 @@ export default function MfaSetup() {
     }
   }, [step, emailOtpSent, setupEmailOtp, user, toast]);
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-muted-foreground">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
   const handleTotpVerify = async () => {
-    if (verificationCode.length !== 6) {
-      setError('Please enter a 6-digit code');
+    // Clean the code - remove any spaces or non-digits
+    const cleanCode = verificationCode.replace(/\D/g, '');
+    
+    if (cleanCode.length !== 6) {
+      setError('Please enter a complete 6-digit code');
       return;
     }
 
@@ -86,7 +99,9 @@ export default function MfaSetup() {
     try {
       setLoading(true);
       setError('');
-      const isValid = await verifyTotpSetup(verificationCode, totpSecret);
+      
+      // Verify the code
+      const isValid = await verifyTotpSetup(cleanCode, totpSecret);
       
       if (isValid) {
         // Generate backup codes
@@ -94,11 +109,11 @@ export default function MfaSetup() {
         setBackupCodes(codes);
         setStep('backup');
       } else {
-        setError('Invalid code. Please try again.');
+        setError('Invalid code. Please make sure: 1) Your phone\'s time is set automatically, 2) You entered the current code (codes change every 30 seconds), 3) You scanned the QR code correctly.');
       }
     } catch (error) {
       setError('Verification failed. Please try again.');
-      console.error(error);
+      console.error('TOTP verification error:', error);
     } finally {
       setLoading(false);
     }
@@ -324,7 +339,7 @@ export default function MfaSetup() {
                 <Mail className="h-8 w-8 text-primary" />
               </div>
               <p className="text-muted-foreground mb-2">
-                {emailOtpSent ? 'Verification code sent to' : 'We'll send a verification code to'}
+                {emailOtpSent ? 'Verification code sent to' : "We'll send a verification code to"}
               </p>
               <p className="font-medium">{user?.email}</p>
               {!emailOtpSent && loading && (

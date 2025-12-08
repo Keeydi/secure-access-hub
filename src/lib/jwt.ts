@@ -1,19 +1,21 @@
-import jwt from 'jsonwebtoken';
+import { SignJWT, jwtVerify, decodeJwt } from 'jose';
 
 // JWT secret - in production, this should be in environment variables
 // For now, using a default that should be changed in production
 const JWT_SECRET = import.meta.env.VITE_JWT_SECRET || 'your-secret-key-change-in-production';
 const JWT_REFRESH_SECRET = import.meta.env.VITE_JWT_REFRESH_SECRET || 'your-refresh-secret-key-change-in-production';
 
-// Token expiration times
-const ACCESS_TOKEN_EXPIRY = '30m'; // 30 minutes
-const REFRESH_TOKEN_EXPIRY = '7d'; // 7 days
+// Token expiration times (in seconds)
+const ACCESS_TOKEN_EXPIRY = 30 * 60; // 30 minutes
+const REFRESH_TOKEN_EXPIRY = 7 * 24 * 60 * 60; // 7 days
 
 export interface TokenPayload {
   userId: string;
   email: string;
   role: string;
   type: 'access' | 'refresh';
+  exp?: number;
+  iat?: number;
 }
 
 export interface TokenPair {
@@ -22,6 +24,14 @@ export interface TokenPair {
   expiresAt: Date;
 }
 
+// Convert secrets to Uint8Array for jose
+const getSecretKey = (secret: string): Uint8Array => {
+  return new TextEncoder().encode(secret);
+};
+
+const accessSecretKey = getSecretKey(JWT_SECRET);
+const refreshSecretKey = getSecretKey(JWT_REFRESH_SECRET);
+
 /**
  * Generate JWT access and refresh token pair
  * @param userId User ID
@@ -29,32 +39,36 @@ export interface TokenPair {
  * @param role User role
  * @returns Token pair with expiration date
  */
-export function generateTokenPair(
+export async function generateTokenPair(
   userId: string,
   email: string,
   role: string
-): TokenPair {
-  const accessPayload: TokenPayload = {
+): Promise<TokenPair> {
+  const now = Math.floor(Date.now() / 1000);
+
+  // Create access token
+  const accessToken = await new SignJWT({
     userId,
     email,
     role,
     type: 'access',
-  };
+  })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt(now)
+    .setExpirationTime(now + ACCESS_TOKEN_EXPIRY)
+    .sign(accessSecretKey);
 
-  const refreshPayload: TokenPayload = {
+  // Create refresh token
+  const refreshToken = await new SignJWT({
     userId,
     email,
     role,
     type: 'refresh',
-  };
-
-  const accessToken = jwt.sign(accessPayload, JWT_SECRET, {
-    expiresIn: ACCESS_TOKEN_EXPIRY,
-  });
-
-  const refreshToken = jwt.sign(refreshPayload, JWT_REFRESH_SECRET, {
-    expiresIn: REFRESH_TOKEN_EXPIRY,
-  });
+  })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt(now)
+    .setExpirationTime(now + REFRESH_TOKEN_EXPIRY)
+    .sign(refreshSecretKey);
 
   // Calculate expiration date (30 minutes from now)
   const expiresAt = new Date();
@@ -72,9 +86,10 @@ export function generateTokenPair(
  * @param token JWT access token
  * @returns Decoded token payload or null if invalid
  */
-export function verifyAccessToken(token: string): TokenPayload | null {
+export async function verifyAccessToken(token: string): Promise<TokenPayload | null> {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as TokenPayload;
+    const { payload } = await jwtVerify(token, accessSecretKey);
+    const decoded = payload as TokenPayload;
     if (decoded.type !== 'access') {
       return null;
     }
@@ -89,9 +104,10 @@ export function verifyAccessToken(token: string): TokenPayload | null {
  * @param token JWT refresh token
  * @returns Decoded token payload or null if invalid
  */
-export function verifyRefreshToken(token: string): TokenPayload | null {
+export async function verifyRefreshToken(token: string): Promise<TokenPayload | null> {
   try {
-    const decoded = jwt.verify(token, JWT_REFRESH_SECRET) as TokenPayload;
+    const { payload } = await jwtVerify(token, refreshSecretKey);
+    const decoded = payload as TokenPayload;
     if (decoded.type !== 'refresh') {
       return null;
     }
@@ -106,8 +122,8 @@ export function verifyRefreshToken(token: string): TokenPayload | null {
  * @param refreshToken Refresh token
  * @returns New token pair or null if refresh token is invalid
  */
-export function refreshAccessToken(refreshToken: string): TokenPair | null {
-  const payload = verifyRefreshToken(refreshToken);
+export async function refreshAccessToken(refreshToken: string): Promise<TokenPair | null> {
+  const payload = await verifyRefreshToken(refreshToken);
   if (!payload) {
     return null;
   }
@@ -122,7 +138,7 @@ export function refreshAccessToken(refreshToken: string): TokenPair | null {
  */
 export function decodeToken(token: string): TokenPayload | null {
   try {
-    return jwt.decode(token) as TokenPayload;
+    return decodeJwt(token) as TokenPayload;
   } catch (error) {
     return null;
   }
@@ -139,7 +155,6 @@ export function isTokenExpired(token: string): boolean {
     return true;
   }
 
-  const exp = typeof decoded.exp === 'number' ? decoded.exp : parseInt(decoded.exp);
+  const exp = typeof decoded.exp === 'number' ? decoded.exp : parseInt(String(decoded.exp));
   return Date.now() >= exp * 1000;
 }
-
