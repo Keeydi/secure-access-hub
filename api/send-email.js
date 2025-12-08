@@ -11,7 +11,7 @@
  * - SMTP_USER: SMTP username (usually your email address)
  * - SMTP_PASS: SMTP password (or app-specific password)
  * - SMTP_FROM_EMAIL: Sender email address
- * - SMTP_FROM_NAME: Sender name (optional, defaults to "Secure Access Hub")
+ * - SMTP_FROM_NAME: Sender name (optional, defaults to "SecureAuth")
  * 
  * Note: Make sure 'nodemailer' package is installed
  */
@@ -138,7 +138,7 @@ export default async function handler(req, res) {
 
     // Get from email and name
     const fromEmail = process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER;
-    const fromName = process.env.SMTP_FROM_NAME || 'Secure Access Hub';
+    const fromName = process.env.SMTP_FROM_NAME || 'SecureAuth';
     const from = `${fromName} <${fromEmail}>`;
 
     // Send email via SMTP
