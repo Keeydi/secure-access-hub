@@ -69,7 +69,7 @@ export default function Landing() {
           
           {/* Subtitle */}
           <p className="text-xl md:text-2xl text-muted-foreground mb-4 max-w-3xl mx-auto animate-fade-in">
-            Secure your online business platforms with advanced authentication and role-based access control
+            Secure Your Online Business Platforms with Advanced Authentication and Role-Based Access Control
           </p>
           
           <p className="text-lg text-muted-foreground/80 mb-12 max-w-2xl mx-auto animate-fade-in">
