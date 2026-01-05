@@ -2,11 +2,12 @@
  * Email OTP utilities
  * 
  * Email Service Options:
+ * - resend: Uses Resend API (requires backend API endpoint at localhost:3001)
  * - smtp: Uses custom SMTP server (requires backend API endpoint for security)
  * - mock: Development mode (logs to console)
  * 
  * For production, set up a backend API endpoint to send emails
- * to keep your SMTP credentials secure.
+ * to keep your credentials secure.
  */
 
 /**
@@ -25,7 +26,7 @@ export function generateEmailOtp(): string {
 export interface EmailConfig {
   from: string;
   subject: string;
-  service?: 'smtp' | 'mock';
+  service?: 'smtp' | 'resend' | 'mock';
   apiEndpoint?: string; // Backend API endpoint for sending emails
 }
 
@@ -52,8 +53,13 @@ const getApiEndpoint = () => {
 };
 
 // Get email service from env, with proper defaults
-const getEmailService = (): 'smtp' | 'mock' => {
+const getEmailService = (): 'smtp' | 'resend' | 'mock' => {
   const envService = import.meta.env.VITE_EMAIL_SERVICE;
+  
+  // If explicitly set to 'resend', use it
+  if (envService === 'resend') {
+    return 'resend';
+  }
   
   // If explicitly set to 'smtp', use it
   if (envService === 'smtp') {
@@ -151,14 +157,15 @@ export async function sendEmailOtp(
 
   try {
     switch (emailConfig.service) {
+      case 'resend':
       case 'smtp':
-        // Use backend API endpoint to send email via SMTP
+        // Use backend API endpoint to send email via Resend or SMTP
         const sent = await sendEmailViaAPI(email, code, emailConfig.subject, htmlBody, textBody);
         
         if (!sent) {
           // In production, don't fall back to mock - return error
           if (isProduction) {
-            console.error('Failed to send email via SMTP. Check your SMTP configuration and serverless function.');
+            console.error(`Failed to send email via ${emailConfig.service}. Check your configuration and serverless function.`);
             return false;
           }
           
