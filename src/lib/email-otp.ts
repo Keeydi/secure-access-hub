@@ -1,13 +1,7 @@
 /**
  * Email OTP utilities
  * 
- * Email Service Options:
- * - resend: Uses Resend API (requires backend API endpoint at localhost:3001)
- * - smtp: Uses custom SMTP server (requires backend API endpoint for security)
- * - mock: Development mode (logs to console)
- * 
- * For production, set up a backend API endpoint to send emails
- * to keep your credentials secure.
+ * Uses SMTP server for sending emails via backend API endpoint
  */
 
 /**
@@ -26,15 +20,10 @@ export function generateEmailOtp(): string {
 export interface EmailConfig {
   from: string;
   subject: string;
-  service?: 'smtp' | 'resend' | 'mock';
   apiEndpoint?: string; // Backend API endpoint for sending emails
 }
 
-// Detect if we're in development or production
-const isDevelopment = import.meta.env.DEV;
-const isProduction = import.meta.env.PROD;
-
-// Get API endpoint from env, but filter out localhost URLs in production
+// Get API endpoint from env
 const getApiEndpoint = () => {
   const envEndpoint = import.meta.env.VITE_EMAIL_API_ENDPOINT;
   
@@ -44,7 +33,7 @@ const getApiEndpoint = () => {
   }
   
   // If it's a localhost URL and we're in production, ignore it and use default
-  if (isProduction && envEndpoint.includes('localhost')) {
+  if (import.meta.env.PROD && envEndpoint.includes('localhost')) {
     console.warn('Localhost API endpoint detected in production, using default /api/send-email');
     return '/api/send-email';
   }
@@ -52,40 +41,14 @@ const getApiEndpoint = () => {
   return envEndpoint;
 };
 
-// Get email service from env, with proper defaults
-const getEmailService = (): 'smtp' | 'resend' | 'mock' => {
-  const envService = import.meta.env.VITE_EMAIL_SERVICE;
-  
-  // If explicitly set to 'resend', use it
-  if (envService === 'resend') {
-    return 'resend';
-  }
-  
-  // If explicitly set to 'smtp', use it
-  if (envService === 'smtp') {
-    return 'smtp';
-  }
-  
-  // If explicitly set to 'mock', use it
-  if (envService === 'mock') {
-    return 'mock';
-  }
-  
-  // Default: use 'smtp' in production, 'mock' in development
-  return isProduction ? 'smtp' : 'mock';
-};
-
 const defaultEmailConfig: EmailConfig = {
   from: 'noreply@secureauth.com',
   subject: 'Your SecureAuth Verification Code',
-  // Use the service determined by getEmailService
-  service: getEmailService(),
-  // Use relative path for Vercel serverless function (works in both dev and prod)
   apiEndpoint: getApiEndpoint(),
 };
 
 /**
- * Send email via backend API endpoint
+ * Send email via backend API endpoint (SMTP)
  */
 async function sendEmailViaAPI(
   email: string,
@@ -123,24 +86,12 @@ async function sendEmailViaAPI(
     return true;
   } catch (error) {
     console.error('Failed to send email via API:', error);
-    
-    // In development, if API fails, log a helpful message
-    if (import.meta.env.DEV) {
-      console.warn(
-        'Email API endpoint is not available. ' +
-        'In development, you can either:\n' +
-        '1. Use mock mode (default): Set VITE_EMAIL_SERVICE=mock\n' +
-        '2. Run Vercel dev server: npx vercel dev\n' +
-        '3. Set up a local backend server'
-      );
-    }
-    
     return false;
   }
 }
 
 /**
- * Send OTP code via email
+ * Send OTP code via email using SMTP
  * @param email Recipient email address
  * @param code OTP code to send
  * @param config Optional email configuration
@@ -156,41 +107,14 @@ export async function sendEmailOtp(
   const textBody = formatEmailBodyText(code);
 
   try {
-    switch (emailConfig.service) {
-      case 'resend':
-      case 'smtp':
-        // Use backend API endpoint to send email via Resend or SMTP
-        const sent = await sendEmailViaAPI(email, code, emailConfig.subject, htmlBody, textBody);
-        
-        if (!sent) {
-          // In production, don't fall back to mock - return error
-          if (isProduction) {
-            console.error(`Failed to send email via ${emailConfig.service}. Check your configuration and serverless function.`);
-            return false;
-          }
-          
-          // Only fall back to mock in development
-          console.warn('Email API failed, falling back to mock mode (development only)');
-          console.log(`[MOCK EMAIL] Sending OTP to ${email}: ${code}`);
-          console.log(`Subject: ${emailConfig.subject}`);
-          console.log(`Body: Your verification code is: ${code}`);
-          console.log(`This code expires in 2 minutes.`);
-          return true;
-        }
-        
-        return sent;
-
-      case 'mock':
-      default:
-        // Mock email service - logs to console in development
-        console.log(`[MOCK EMAIL] Sending OTP to ${email}: ${code}`);
-        console.log(`Subject: ${emailConfig.subject}`);
-        console.log(`Body: Your verification code is: ${code}`);
-        console.log(`This code expires in 2 minutes.`);
-        // Simulate network delay
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        return true;
+    const sent = await sendEmailViaAPI(email, code, emailConfig.subject, htmlBody, textBody);
+    
+    if (!sent) {
+      console.error('Failed to send email via SMTP. Check your configuration and serverless function.');
+      return false;
     }
+    
+    return true;
   } catch (error) {
     console.error('Failed to send email OTP:', error);
     return false;

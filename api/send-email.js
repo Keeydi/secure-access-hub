@@ -1,14 +1,9 @@
 /**
- * Vercel Serverless Function for Email Sending
+ * Vercel Serverless Function for Email Sending via SMTP
  * 
- * Supports multiple email sending methods:
- * 1. SMTP (Direct - Custom email server)
- * 2. Resend API (Third-party service)
+ * This function handles email sending using custom SMTP server.
  * 
  * Environment Variables (set in Vercel dashboard):
- * 
- * For SMTP (Custom):
- * - EMAIL_SERVICE=smtp
  * - SMTP_HOST: SMTP server hostname (e.g., smtp.gmail.com, smtp.office365.com)
  * - SMTP_PORT: SMTP server port (usually 587 for TLS, 465 for SSL)
  * - SMTP_SECURE: Use SSL (true for port 465, false for port 587)
@@ -17,16 +12,10 @@
  * - SMTP_FROM_EMAIL: Sender email address
  * - SMTP_FROM_NAME: Sender name (optional, defaults to "SecureAuth")
  * 
- * For Resend API:
- * - EMAIL_SERVICE=resend
- * - RESEND_API_KEY: Your Resend API key (starts with re_)
- * - RESEND_FROM_EMAIL: Sender email address (optional)
- * 
- * Note: Make sure required packages are installed (nodemailer for SMTP, resend for Resend)
+ * Note: Make sure 'nodemailer' package is installed
  */
 
 import nodemailer from 'nodemailer';
-import { Resend } from 'resend';
 
 // ============================================
 // SMTP Configuration (Custom Email Server)
@@ -99,35 +88,7 @@ function getSmtpTransporter() {
 }
 
 // ============================================
-// Resend API Configuration
-// ============================================
-
-let resendClient = null;
-
-function getResendClient() {
-  if (resendClient) {
-    return resendClient;
-  }
-
-  // Validate required environment variable
-  const resendApiKey = process.env.RESEND_API_KEY;
-  if (!resendApiKey) {
-    throw new Error('RESEND_API_KEY environment variable is missing');
-  }
-
-  // Validate API key format
-  if (!resendApiKey.startsWith('re_')) {
-    throw new Error('Invalid RESEND_API_KEY format. It should start with "re_"');
-  }
-
-  console.log('Initializing Resend client with API key:', resendApiKey.substring(0, 10) + '...');
-  
-  resendClient = new Resend(resendApiKey);
-  return resendClient;
-}
-
-// ============================================
-// Email Sending Functions
+// Email Sending Function
 // ============================================
 
 async function sendViaSMTP(to, subject, html, text) {
@@ -148,29 +109,6 @@ async function sendViaSMTP(to, subject, html, text) {
     success: true,
     messageId: info.messageId,
     message: 'Email sent successfully via SMTP'
-  };
-}
-
-async function sendViaResend(to, subject, html, text) {
-  const resend = getResendClient();
-  const fromEmail = process.env.RESEND_FROM_EMAIL || 'SecureAuth <onboarding@resend.dev>';
-
-  const { data, error } = await resend.emails.send({
-    from: fromEmail,
-    to: [to],
-    subject: subject,
-    html: html,
-    text: text || html.replace(/<[^>]*>/g, ''),
-  });
-
-  if (error) {
-    throw new Error(`Resend API error: ${error.message}`);
-  }
-
-  return {
-    success: true,
-    id: data?.id,
-    message: 'Email sent successfully via Resend'
   };
 }
 
@@ -217,53 +155,57 @@ export default async function handler(req, res) {
       });
     }
 
-    // Determine which email service to use
-    const emailService = (process.env.EMAIL_SERVICE || 'smtp').toLowerCase();
+    // Log configuration for debugging
+    console.log('Email service configuration:', {
+      hasSMTPConfig: !!(process.env.SMTP_HOST && process.env.SMTP_USER),
+    });
+
+    // Check if SMTP is configured
+    if (!process.env.SMTP_HOST || !process.env.SMTP_USER) {
+      return res.status(500).json({
+        error: 'SMTP not configured',
+        message: 'SMTP environment variables are missing. Please set SMTP_HOST, SMTP_PORT, SMTP_USER, and SMTP_PASS in Vercel dashboard.'
+      });
+    }
 
     let result;
     let errorMessage;
 
     try {
-      if (emailService === 'resend') {
-        result = await sendViaResend(to, subject, html, text);
-      } else if (emailService === 'smtp') {
-        result = await sendViaSMTP(to, subject, html, text);
-      } else {
-        return res.status(400).json({
-          error: 'Invalid email service',
-          message: `EMAIL_SERVICE must be either 'smtp' or 'resend'. Current value: ${emailService}`
-        });
-      }
+      result = await sendViaSMTP(to, subject, html, text);
 
       console.log('Email sent successfully:', {
-        service: emailService,
+        service: 'smtp',
         to,
         subject,
-        messageId: result.messageId || result.id
+        messageId: result.messageId
       });
 
       return res.status(200).json(result);
 
     } catch (error) {
-      console.error(`${emailService.toUpperCase()} sending error:`, error);
+      console.error('SMTP sending error:', {
+        message: error.message,
+        code: error.code,
+        stack: error.stack,
+      });
       
       // Provide helpful error messages
-      if (emailService === 'smtp') {
-        if (error.code === 'EAUTH') {
-          errorMessage = 'SMTP authentication failed. Check your SMTP_USER and SMTP_PASS.';
-        } else if (error.code === 'ECONNECTION') {
-          errorMessage = 'Could not connect to SMTP server. Check SMTP_HOST and SMTP_PORT.';
-        } else {
-          errorMessage = error.message || 'Failed to send email via SMTP';
-        }
+      if (error.code === 'EAUTH') {
+        errorMessage = 'SMTP authentication failed. Check your SMTP_USER and SMTP_PASS.';
+      } else if (error.code === 'ECONNECTION') {
+        errorMessage = 'Could not connect to SMTP server. Check SMTP_HOST and SMTP_PORT.';
+      } else if (error.message) {
+        errorMessage = error.message;
       } else {
-        errorMessage = error.message || 'Failed to send email via Resend';
+        errorMessage = 'Failed to send email via SMTP. Check your SMTP configuration.';
       }
       
       return res.status(500).json({ 
         error: 'Failed to send email',
         message: errorMessage,
-        service: emailService
+        service: 'smtp',
+        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
       });
     }
 

@@ -6,7 +6,7 @@ A comprehensive Multi-Factor Authentication (MFA) and Access Control System for 
 
 - **Multi-Factor Authentication (MFA)**
   - Time-based One-Time Password (TOTP) via authenticator apps
-  - Email OTP verification
+  - Email OTP verification via SMTP
   - Backup codes for account recovery
 
 - **Role-Based Access Control**
@@ -40,7 +40,8 @@ A comprehensive Multi-Factor Authentication (MFA) and Access Control System for 
 - **UI Components**: shadcn/ui, Tailwind CSS
 - **Authentication**: JWT (jose library), bcryptjs
 - **Database**: Supabase (PostgreSQL)
-- **MFA**: otplib (TOTP), Email OTP
+- **MFA**: otplib (TOTP), Email OTP via SMTP
+- **Email**: SMTP (nodemailer)
 - **Routing**: React Router v6
 - **State Management**: React Context API
 
@@ -50,7 +51,7 @@ A comprehensive Multi-Factor Authentication (MFA) and Access Control System for 
 
 - Node.js 18+ and npm
 - Supabase account and project
-- (Optional) Resend API key for email service
+- SMTP email server (Gmail, Outlook, or custom)
 
 ### Installation
 
@@ -63,6 +64,7 @@ cd secure-access-hub
 2. Install dependencies:
 ```sh
 npm install
+cd server && npm install
 ```
 
 3. Set up environment variables:
@@ -72,39 +74,47 @@ VITE_SUPABASE_URL=your_supabase_url
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 VITE_JWT_SECRET=your_jwt_secret
 VITE_JWT_REFRESH_SECRET=your_jwt_refresh_secret
-VITE_EMAIL_SERVICE=resend
+VITE_EMAIL_SERVICE=smtp
 VITE_EMAIL_API_ENDPOINT=http://localhost:3001/api/send-email
 ```
 
+Create a `server/.env` file:
+```env
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=your-email@gmail.com
+SMTP_PASS=your-app-password
+SMTP_FROM_EMAIL=your-email@gmail.com
+SMTP_FROM_NAME=SecureAuth
+```
+
 4. Set up the database:
-- Run the SQL scripts in the `supabase/` directory to set up your database schema
-- Configure Row Level Security (RLS) policies as needed
+- Run `supabase/complete-setup.sql` in your Supabase SQL Editor
 
-5. (Optional) Set up email service:
-- See `EMAIL_SERVICE_SETUP.md` for detailed instructions
-- Start the email server: `cd server && npm install && npm start`
-
-6. Start the development server:
+5. Start the development server:
 ```sh
+# Terminal 1: Start email server
+cd server
+npm start
+
+# Terminal 2: Start frontend
+cd ..
 npm run dev
 ```
 
 The application will be available at `http://localhost:8080`
 
-## Project Structure
+## Deployment
 
-```
-secure-access-hub/
-├── src/
-│   ├── components/     # Reusable UI components
-│   ├── contexts/       # React contexts (Auth, etc.)
-│   ├── lib/           # Utility functions and API clients
-│   ├── pages/         # Page components
-│   └── hooks/         # Custom React hooks
-├── supabase/          # Database schema and migrations
-├── server/            # Backend email service (optional)
-└── public/            # Static assets
-```
+### Vercel
+
+1. Push your code to GitHub/GitLab/Bitbucket
+2. Import the project in Vercel
+3. Add environment variables in Vercel dashboard:
+   - All `VITE_*` variables from root `.env`
+   - All `SMTP_*` variables from `server/.env`
+4. Deploy!
 
 ## Scripts
 
@@ -113,39 +123,3 @@ secure-access-hub/
 - `npm run preview` - Preview production build
 - `npm run lint` - Run ESLint
 - `npm run create-admin` - Create an admin user interactively
-
-## Deployment
-
-### Vercel (Recommended)
-
-The project is configured for easy deployment to Vercel. See [VERCEL_DEPLOYMENT.md](./VERCEL_DEPLOYMENT.md) for detailed instructions.
-
-Quick steps:
-1. Push your code to GitHub/GitLab/Bitbucket
-2. Import the project in Vercel
-3. Add environment variables in Vercel dashboard
-4. Deploy!
-
-### Other Platforms
-
-Build the project for production:
-```sh
-npm run build
-```
-
-The `dist/` folder will contain the production-ready files that can be deployed to any static hosting service.
-
-**Note**: For email functionality, you'll need to deploy the email service separately or use the included Vercel serverless function at `api/send-email.js`.
-
-## Security Considerations
-
-- All passwords are hashed using bcrypt
-- JWT tokens are signed with secure secrets
-- RLS policies protect database access
-- Rate limiting prevents brute force attacks
-- Audit logs track all security-relevant actions
-- MFA adds an extra layer of security
-
-## License
-
-This project is proprietary software. All rights reserved.
