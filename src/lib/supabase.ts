@@ -3,22 +3,36 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-if (!supabaseUrl || !supabaseAnonKey) {
+// Check if values are missing or are placeholders
+const isPlaceholderUrl = supabaseUrl.includes('your-project-id') || supabaseUrl.includes('your_supabase_url');
+const isPlaceholderKey = supabaseAnonKey.includes('your-anon-key') || supabaseAnonKey.includes('your_anon_key');
+
+if (!supabaseUrl || !supabaseAnonKey || isPlaceholderUrl || isPlaceholderKey) {
   const errorMessage = `
-⚠️ Supabase configuration is missing!
+⚠️ Supabase configuration is missing or contains placeholder values!
 
-Please create a .env file in the root of your project with:
-VITE_SUPABASE_URL=your_supabase_url
-VITE_SUPABASE_ANON_KEY=your_anon_key
+Please update your .env file in the root of your project with your actual Supabase credentials:
+VITE_SUPABASE_URL=https://your-actual-project-id.supabase.co
+VITE_SUPABASE_ANON_KEY=your-actual-anon-key
 
-See SUPABASE_SETUP.md for detailed instructions.
+To get your Supabase credentials:
+1. Go to https://supabase.com/dashboard
+2. Select your project (or create a new one)
+3. Go to Settings → API
+4. Copy the "Project URL" and "anon public" key
+5. Replace the placeholder values in your .env file
+6. Restart your dev server (npm run dev)
+
+Current values detected:
+- VITE_SUPABASE_URL: ${supabaseUrl || '(empty)'}
+- VITE_SUPABASE_ANON_KEY: ${supabaseAnonKey ? supabaseAnonKey.substring(0, 20) + '...' : '(empty)'}
   `.trim();
   
   console.error(errorMessage);
   
   // Throw a more helpful error
   throw new Error(
-    'Supabase environment variables are not set. Please create a .env file with VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY. See SUPABASE_SETUP.md for instructions.'
+    'Supabase environment variables are not set or contain placeholder values. Please update your .env file with actual Supabase credentials and restart your dev server.'
   );
 }
 

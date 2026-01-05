@@ -1,10 +1,14 @@
 /**
  * Vercel Serverless Function for Email Sending
  * 
- * This function handles email sending via SMTP (custom email service).
- * You can use any SMTP provider: Gmail, Outlook, custom SMTP server, etc.
+ * Supports multiple email sending methods:
+ * 1. SMTP (Direct - Custom email server)
+ * 2. Resend API (Third-party service)
  * 
- * Environment Variables Required (set in Vercel dashboard):
+ * Environment Variables (set in Vercel dashboard):
+ * 
+ * For SMTP (Custom):
+ * - EMAIL_SERVICE=smtp
  * - SMTP_HOST: SMTP server hostname (e.g., smtp.gmail.com, smtp.office365.com)
  * - SMTP_PORT: SMTP server port (usually 587 for TLS, 465 for SSL)
  * - SMTP_SECURE: Use SSL (true for port 465, false for port 587)
@@ -13,17 +17,26 @@
  * - SMTP_FROM_EMAIL: Sender email address
  * - SMTP_FROM_NAME: Sender name (optional, defaults to "SecureAuth")
  * 
- * Note: Make sure 'nodemailer' package is installed
+ * For Resend API:
+ * - EMAIL_SERVICE=resend
+ * - RESEND_API_KEY: Your Resend API key (starts with re_)
+ * - RESEND_FROM_EMAIL: Sender email address (optional)
+ * 
+ * Note: Make sure required packages are installed (nodemailer for SMTP, resend for Resend)
  */
 
 import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 
-// Create reusable transporter (will be initialized on first use)
-let transporter = null;
+// ============================================
+// SMTP Configuration (Custom Email Server)
+// ============================================
 
-function getTransporter() {
-  if (transporter) {
-    return transporter;
+let smtpTransporter = null;
+
+function getSmtpTransporter() {
+  if (smtpTransporter) {
+    return smtpTransporter;
   }
 
   // Validate required environment variables
@@ -64,7 +77,7 @@ function getTransporter() {
     user: smtpUser ? `${smtpUser.substring(0, 3)}***` : 'not set',
   });
 
-  transporter = nodemailer.createTransport({
+  smtpTransporter = nodemailer.createTransport({
     host: smtpHost,
     port: smtpPort,
     secure: smtpSecure,
@@ -82,8 +95,88 @@ function getTransporter() {
     socketTimeout: 10000,
   });
 
-  return transporter;
+  return smtpTransporter;
 }
+
+// ============================================
+// Resend API Configuration
+// ============================================
+
+let resendClient = null;
+
+function getResendClient() {
+  if (resendClient) {
+    return resendClient;
+  }
+
+  // Validate required environment variable
+  const resendApiKey = process.env.RESEND_API_KEY;
+  if (!resendApiKey) {
+    throw new Error('RESEND_API_KEY environment variable is missing');
+  }
+
+  // Validate API key format
+  if (!resendApiKey.startsWith('re_')) {
+    throw new Error('Invalid RESEND_API_KEY format. It should start with "re_"');
+  }
+
+  console.log('Initializing Resend client with API key:', resendApiKey.substring(0, 10) + '...');
+  
+  resendClient = new Resend(resendApiKey);
+  return resendClient;
+}
+
+// ============================================
+// Email Sending Functions
+// ============================================
+
+async function sendViaSMTP(to, subject, html, text) {
+  const transporter = getSmtpTransporter();
+  const fromEmail = process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER;
+  const fromName = process.env.SMTP_FROM_NAME || 'SecureAuth';
+  const from = `${fromName} <${fromEmail}>`;
+
+  const info = await transporter.sendMail({
+    from,
+    to,
+    subject,
+    html,
+    text: text || html.replace(/<[^>]*>/g, ''), // Strip HTML tags for text version
+  });
+
+  return {
+    success: true,
+    messageId: info.messageId,
+    message: 'Email sent successfully via SMTP'
+  };
+}
+
+async function sendViaResend(to, subject, html, text) {
+  const resend = getResendClient();
+  const fromEmail = process.env.RESEND_FROM_EMAIL || 'SecureAuth <onboarding@resend.dev>';
+
+  const { data, error } = await resend.emails.send({
+    from: fromEmail,
+    to: [to],
+    subject: subject,
+    html: html,
+    text: text || html.replace(/<[^>]*>/g, ''),
+  });
+
+  if (error) {
+    throw new Error(`Resend API error: ${error.message}`);
+  }
+
+  return {
+    success: true,
+    id: data?.id,
+    message: 'Email sent successfully via Resend'
+  };
+}
+
+// ============================================
+// Main Handler
+// ============================================
 
 export default async function handler(req, res) {
   // Only allow POST requests
@@ -124,62 +217,56 @@ export default async function handler(req, res) {
       });
     }
 
-    // Get transporter
-    let smtpTransporter;
-    try {
-      smtpTransporter = getTransporter();
-    } catch (error) {
-      console.error('SMTP configuration error:', error);
-      return res.status(500).json({ 
-        error: 'Email service not configured',
-        message: error.message || 'SMTP configuration is missing or invalid'
-      });
-    }
+    // Determine which email service to use
+    const emailService = (process.env.EMAIL_SERVICE || 'smtp').toLowerCase();
 
-    // Get from email and name
-    const fromEmail = process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER;
-    const fromName = process.env.SMTP_FROM_NAME || 'SecureAuth';
-    const from = `${fromName} <${fromEmail}>`;
+    let result;
+    let errorMessage;
 
-    // Send email via SMTP
     try {
-      const info = await smtpTransporter.sendMail({
-        from,
-        to,
-        subject,
-        html,
-        text: text || html.replace(/<[^>]*>/g, ''), // Strip HTML tags for text version
-      });
+      if (emailService === 'resend') {
+        result = await sendViaResend(to, subject, html, text);
+      } else if (emailService === 'smtp') {
+        result = await sendViaSMTP(to, subject, html, text);
+      } else {
+        return res.status(400).json({
+          error: 'Invalid email service',
+          message: `EMAIL_SERVICE must be either 'smtp' or 'resend'. Current value: ${emailService}`
+        });
+      }
 
       console.log('Email sent successfully:', {
-        messageId: info.messageId,
+        service: emailService,
         to,
         subject,
+        messageId: result.messageId || result.id
       });
 
-      return res.status(200).json({ 
-        success: true,
-        messageId: info.messageId,
-        message: 'Email sent successfully'
-      });
+      return res.status(200).json(result);
+
     } catch (error) {
-      console.error('SMTP sending error:', error);
+      console.error(`${emailService.toUpperCase()} sending error:`, error);
       
       // Provide helpful error messages
-      let errorMessage = 'Failed to send email';
-      if (error.code === 'EAUTH') {
-        errorMessage = 'SMTP authentication failed. Check your SMTP_USER and SMTP_PASS.';
-      } else if (error.code === 'ECONNECTION') {
-        errorMessage = 'Could not connect to SMTP server. Check SMTP_HOST and SMTP_PORT.';
-      } else if (error.message) {
-        errorMessage = error.message;
+      if (emailService === 'smtp') {
+        if (error.code === 'EAUTH') {
+          errorMessage = 'SMTP authentication failed. Check your SMTP_USER and SMTP_PASS.';
+        } else if (error.code === 'ECONNECTION') {
+          errorMessage = 'Could not connect to SMTP server. Check SMTP_HOST and SMTP_PORT.';
+        } else {
+          errorMessage = error.message || 'Failed to send email via SMTP';
+        }
+      } else {
+        errorMessage = error.message || 'Failed to send email via Resend';
       }
       
-      return res.status(400).json({ 
+      return res.status(500).json({ 
         error: 'Failed to send email',
-        message: errorMessage
+        message: errorMessage,
+        service: emailService
       });
     }
+
   } catch (error) {
     console.error('Email sending error:', error);
     return res.status(500).json({ 
