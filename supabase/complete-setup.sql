@@ -96,12 +96,21 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
 CREATE TABLE IF NOT EXISTS email_verification_otps (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   email VARCHAR(255) NOT NULL,
-  code VARCHAR(10) NOT NULL,
+  code VARCHAR(40) NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
   expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
   used BOOLEAN DEFAULT FALSE,
+  phone_number VARCHAR(20) NULL,
+  otp_delivery VARCHAR(20) NOT NULL DEFAULT 'email',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Existing databases: add SkySMS columns (safe if already applied)
+ALTER TABLE email_verification_otps
+  ADD COLUMN IF NOT EXISTS phone_number VARCHAR(20) NULL,
+  ADD COLUMN IF NOT EXISTS otp_delivery VARCHAR(20) NOT NULL DEFAULT 'email';
+ALTER TABLE email_verification_otps
+  ALTER COLUMN code TYPE VARCHAR(40);
 
 -- ============================================
 -- 3. INDEXES (for better performance)

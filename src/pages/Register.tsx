@@ -1,11 +1,14 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Shield, AlertCircle, CheckCircle, Mail, Loader2 } from 'lucide-react';
+import { Shield, AlertCircle, CheckCircle, Mail, Loader2, Smartphone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { normalizePhilippinePhone } from '@/lib/phone';
+import { cn } from '@/lib/utils';
 
 const passwordRequirements = [
   { label: 'At least 8 characters', test: (p: string) => p.length >= 8 },
@@ -14,9 +17,20 @@ const passwordRequirements = [
   { label: 'One number', test: (p: string) => /\d/.test(p) },
 ];
 
+type OtpDelivery = 'email' | 'sms';
+
+function maskPhilippinePhoneDisplay(raw: string): string {
+  const n = normalizePhilippinePhone(raw);
+  if (!n || n.length < 10) return raw.trim() || 'your number';
+  return `${n.slice(0, 6)}***${n.slice(-3)}`;
+}
+
 export default function Register() {
   const [step, setStep] = useState<'form' | 'verify'>('form');
+  const [deliveryChoice, setDeliveryChoice] = useState<OtpDelivery>('email');
+  const [verificationChannel, setVerificationChannel] = useState<OtpDelivery | null>(null);
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [verificationCode, setVerificationCode] = useState(['', '', '', '', '', '']);
@@ -49,15 +63,28 @@ export default function Register() {
       return;
     }
 
+    if (deliveryChoice === 'sms') {
+      const normalized = normalizePhilippinePhone(phone);
+      if (!normalized) {
+        setError('Enter a valid Philippine mobile number (+639XXXXXXXXX or 09XXXXXXXXX).');
+        return;
+      }
+    }
+
     setSendingOtp(true);
 
     try {
-      const sent = await sendRegistrationOtp(email, password);
+      const phoneForOtp = deliveryChoice === 'sms' ? phone : undefined;
+      const sent = await sendRegistrationOtp(email, password, phoneForOtp);
       if (sent) {
+        setVerificationChannel(deliveryChoice);
         setStep('verify');
         toast({
           title: 'Verification Code Sent',
-          description: `A verification code has been sent to ${email}. Please check your email.`,
+          description:
+            deliveryChoice === 'sms'
+              ? `A 6-digit code was sent via SMS to ${maskPhilippinePhoneDisplay(phone)}.`
+              : `A verification code has been sent to ${email}. Please check your email.`,
         });
       } else {
         setError('Failed to send verification code. Please try again.');
@@ -111,15 +138,14 @@ export default function Register() {
     }
 
     try {
-      await verifyRegistrationOtp(email, fullCode);
-      
-      // Show success toast
+      const phoneForVerify = verificationChannel === 'sms' ? phone : undefined;
+      await verifyRegistrationOtp(email, fullCode, phoneForVerify?.trim() || undefined);
+
       toast({
         title: 'Registration Successful',
         description: 'Your account has been created. Please sign in to continue.',
       });
-      
-      // Redirect to login page
+
       navigate('/login');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Invalid or expired verification code.';
@@ -136,11 +162,15 @@ export default function Register() {
     setSendingOtp(true);
 
     try {
-      const sent = await sendRegistrationOtp(email, password);
+      const phoneForOtp = verificationChannel === 'sms' ? phone : undefined;
+      const sent = await sendRegistrationOtp(email, password, phoneForOtp);
       if (sent) {
         toast({
           title: 'Code Resent',
-          description: 'A new verification code has been sent to your email.',
+          description:
+            verificationChannel === 'sms'
+              ? 'A new code was sent via SMS.'
+              : 'A new verification code has been sent to your email.',
         });
         setVerificationCode(['', '', '', '', '', '']);
         inputRefs.current[0]?.focus();
@@ -167,9 +197,7 @@ export default function Register() {
           {step === 'form' ? (
             <>
               <h2 className="text-2xl font-bold text-foreground mb-2">Sign Up</h2>
-              <p className="text-muted-foreground mb-6">
-                Create your account to get started
-              </p>
+              <p className="text-muted-foreground mb-6">Create your account to get started</p>
 
               {error && (
                 <div className="flex items-center gap-2 p-3 mb-6 rounded-lg bg-destructive/10 text-destructive border border-destructive/20">
@@ -180,7 +208,9 @@ export default function Register() {
 
               <form onSubmit={handleFormSubmit} className="space-y-5">
                 <div className="space-y-2">
-                  <Label htmlFor="email" className="text-foreground">Email</Label>
+                  <Label htmlFor="email" className="text-foreground">
+                    Email
+                  </Label>
                   <Input
                     id="email"
                     type="email"
@@ -192,8 +222,85 @@ export default function Register() {
                   />
                 </div>
 
+                <div className="space-y-3">
+                  <Label className="text-foreground">Verification code via</Label>
+                  <RadioGroup
+                    value={deliveryChoice}
+                    onValueChange={(v) => {
+                      const next = v as OtpDelivery;
+                      setDeliveryChoice(next);
+                      if (next === 'email') setPhone('');
+                    }}
+                    disabled={sendingOtp}
+                    className="grid gap-3"
+                  >
+                    <label
+                      htmlFor="reg-otp-email"
+                      className={cn(
+                        'flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors',
+                        deliveryChoice === 'email'
+                          ? 'border-primary bg-primary/5'
+                          : 'border-border hover:bg-muted/40',
+                      )}
+                    >
+                      <RadioGroupItem value="email" id="reg-otp-email" className="mt-1" />
+                      <div className="flex-1 space-y-0.5">
+                        <div className="flex items-center gap-2 font-medium text-foreground">
+                          <Mail className="h-4 w-4 text-primary" />
+                          Email
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          6-digit code sent to your inbox (SMTP).
+                        </p>
+                      </div>
+                    </label>
+                    <label
+                      htmlFor="reg-otp-sms"
+                      className={cn(
+                        'flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors',
+                        deliveryChoice === 'sms'
+                          ? 'border-primary bg-primary/5'
+                          : 'border-border hover:bg-muted/40',
+                      )}
+                    >
+                      <RadioGroupItem value="sms" id="reg-otp-sms" className="mt-1" />
+                      <div className="flex-1 space-y-0.5">
+                        <div className="flex items-center gap-2 font-medium text-foreground">
+                          <Smartphone className="h-4 w-4 text-primary" />
+                          SMS (Philippines)
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          6-digit code via SkySMS. Point{' '}
+                          <code className="text-[11px]">VITE_EMAIL_API_ENDPOINT</code> at your API server
+                          (same host as <code className="text-[11px]">/api/skysms/*</code>).
+                        </p>
+                      </div>
+                    </label>
+                  </RadioGroup>
+                </div>
+
+                {deliveryChoice === 'sms' && (
+                  <div className="space-y-2">
+                    <Label htmlFor="phone" className="text-foreground">
+                      Mobile number <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="phone"
+                      type="tel"
+                      placeholder="+639171234567 or 09171234567"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      required
+                      disabled={sendingOtp}
+                      autoComplete="tel"
+                    />
+                  </div>
+                )}
+
                 <div className="space-y-2">
-                  <Label htmlFor="password" className="text-foreground">Password</Label>
+                  <Label htmlFor="password" className="text-foreground">
+                    Password
+                  </Label>
                   <Input
                     id="password"
                     type="password"
@@ -221,7 +328,9 @@ export default function Register() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="confirmPassword" className="text-foreground">Confirm Password</Label>
+                  <Label htmlFor="confirmPassword" className="text-foreground">
+                    Confirm Password
+                  </Label>
                   <Input
                     id="confirmPassword"
                     type="password"
@@ -233,11 +342,7 @@ export default function Register() {
                   />
                 </div>
 
-                <Button 
-                  type="submit" 
-                  className="w-full" 
-                  disabled={sendingOtp}
-                >
+                <Button type="submit" className="w-full" disabled={sendingOtp}>
                   {sendingOtp ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -253,13 +358,23 @@ export default function Register() {
             <>
               <div className="text-center mb-6">
                 <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                  <Mail className="h-8 w-8 text-primary" />
+                  {verificationChannel === 'sms' ? (
+                    <Smartphone className="h-8 w-8 text-primary" />
+                  ) : (
+                    <Mail className="h-8 w-8 text-primary" />
+                  )}
                 </div>
-                <h2 className="text-2xl font-bold text-foreground mb-2">Verify Your Email</h2>
+                <h2 className="text-2xl font-bold text-foreground mb-2">
+                  {verificationChannel === 'sms' ? 'Verify Your Phone' : 'Verify Your Email'}
+                </h2>
                 <p className="text-muted-foreground text-sm">
-                  We've sent a 6-digit verification code to
+                  {verificationChannel === 'sms'
+                    ? "We've sent a 6-digit code via SMS to"
+                    : "We've sent a 6-digit verification code to"}
                 </p>
-                <p className="font-medium text-foreground mt-1">{email}</p>
+                <p className="font-medium text-foreground mt-1">
+                  {verificationChannel === 'sms' ? maskPhilippinePhoneDisplay(phone) : email}
+                </p>
               </div>
 
               {error && (
@@ -274,7 +389,9 @@ export default function Register() {
                   {verificationCode.map((digit, index) => (
                     <input
                       key={index}
-                      ref={(el) => (inputRefs.current[index] = el)}
+                      ref={(el) => {
+                        inputRefs.current[index] = el;
+                      }}
                       type="text"
                       inputMode="numeric"
                       maxLength={1}
@@ -287,11 +404,7 @@ export default function Register() {
                   ))}
                 </div>
 
-                <Button 
-                  type="submit" 
-                  className="w-full mb-3" 
-                  disabled={loading}
-                >
+                <Button type="submit" className="w-full mb-3" disabled={loading}>
                   {loading ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -318,12 +431,14 @@ export default function Register() {
                     type="button"
                     onClick={() => {
                       setStep('form');
+                      if (verificationChannel) setDeliveryChoice(verificationChannel);
+                      setVerificationChannel(null);
                       setError('');
                       setVerificationCode(['', '', '', '', '', '']);
                     }}
                     className="text-sm text-muted-foreground hover:text-foreground"
                   >
-                    ← Change email
+                    ← Edit signup details
                   </button>
                 </div>
               </form>

@@ -693,25 +693,53 @@ export async function markPasswordResetTokenAsUsed(token: string): Promise<void>
   }
 }
 
+export type RegistrationOtpDelivery = 'email' | 'skysms';
+
 /**
- * Create email verification OTP (for registration)
+ * Create email verification OTP (for registration).
+ * For SkySMS, `code` is an internal placeholder; the user receives the provider OTP via SMS.
  */
 export async function createEmailVerificationOtp(
   email: string,
   code: string,
   passwordHash: string,
-  expiresAt: Date
+  expiresAt: Date,
+  options?: {
+    phoneNumber?: string | null;
+    otpDelivery?: RegistrationOtpDelivery;
+  }
 ): Promise<void> {
-  const { error } = await supabase.from('email_verification_otps').insert({
+  const otpDelivery = options?.otpDelivery ?? 'email';
+  const row: Record<string, unknown> = {
     email: email.toLowerCase().trim(),
     code,
     password_hash: passwordHash,
     expires_at: expiresAt.toISOString(),
     used: false,
-  });
+    otp_delivery: otpDelivery,
+  };
+  if (options?.phoneNumber != null) {
+    row.phone_number = options.phoneNumber;
+  }
+
+  const { error } = await supabase.from('email_verification_otps').insert(row);
 
   if (error) {
     throw new Error(`Failed to create email verification OTP: ${error.message}`);
+  }
+}
+
+/** Remove pending SkySMS registration rows for an email (before creating a new one). */
+export async function deletePendingSkysmsRegistration(email: string): Promise<void> {
+  const normalized = email.toLowerCase().trim();
+  const { error } = await supabase
+    .from('email_verification_otps')
+    .delete()
+    .eq('email', normalized)
+    .eq('otp_delivery', 'skysms');
+
+  if (error) {
+    throw new Error(`Failed to clear pending SMS registration: ${error.message}`);
   }
 }
 

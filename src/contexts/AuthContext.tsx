@@ -5,6 +5,8 @@ import { hashPassword, comparePassword } from '@/lib/password';
 import { generateTokenPair, verifyAccessToken, refreshAccessToken, isTokenExpired } from '@/lib/jwt';
 import { generateTotpSecret, generateTotpUri, generateQRCode, verifyTotp } from '@/lib/totp';
 import { generateEmailOtp, sendEmailOtp } from '@/lib/email-otp';
+import { normalizePhilippinePhone } from '@/lib/phone';
+import { sendSkysmsRegistrationOtp, verifySkysmsRegistration } from '@/lib/skysms-registration';
 import { checkLoginRateLimit, getRateLimitErrorMessage } from '@/lib/rate-limit';
 import { checkSessionTimeout, getTimeUntilExpiry, SESSION_TIMEOUT_MS } from '@/lib/session-timeout';
 import { getClientIpAddress, getCachedClientIp } from '@/lib/ip-address';
@@ -22,8 +24,8 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<{ requiresMfa: boolean }>;
   verifyMfa: (code: string, type?: 'totp' | 'email') => Promise<boolean>;
   logout: () => void;
-  sendRegistrationOtp: (email: string, password: string) => Promise<boolean>;
-  verifyRegistrationOtp: (email: string, code: string) => Promise<void>;
+  sendRegistrationOtp: (email: string, password: string, phone?: string) => Promise<boolean>;
+  verifyRegistrationOtp: (email: string, code: string, phone?: string) => Promise<void>;
   enableMfa: () => void;
   disableMfa: () => void;
   setupTotp: () => Promise<{ secret: string; qrCode: string; uri: string }>;
@@ -343,54 +345,82 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   /**
-   * Send email verification OTP for registration
+   * Send registration OTP by email, or by SkySMS when `phone` is a valid PH mobile.
    */
-  const sendRegistrationOtp = async (email: string, password: string): Promise<boolean> => {
-    // Check if user already exists
+  const sendRegistrationOtp = async (
+    email: string,
+    password: string,
+    phone?: string
+  ): Promise<boolean> => {
     const existingUser = await api.getUserByEmail(email);
     if (existingUser) {
       throw new Error('User already exists');
     }
 
-    // Hash password using bcrypt
     const passwordHash = await hashPassword(password);
-    
-    // Generate OTP code
-    const code = generateEmailOtp();
-    
-    // Set expiry to 2 minutes (120 seconds)
     const expiresAt = new Date();
     expiresAt.setSeconds(expiresAt.getSeconds() + 120);
 
-    // Store OTP with password hash temporarily
-    await api.createEmailVerificationOtp(email, code, passwordHash, expiresAt);
+    const trimmedPhone = phone?.trim();
+    const normalizedPhone = trimmedPhone ? normalizePhilippinePhone(trimmedPhone) : null;
+    if (trimmedPhone && !normalizedPhone) {
+      throw new Error('Invalid Philippine mobile number. Use +639XXXXXXXXX or 09XXXXXXXXX.');
+    }
 
-    // Send email
-    const sent = await sendEmailOtp(email, code, {
+    if (normalizedPhone) {
+      await api.deletePendingSkysmsRegistration(email);
+      const internalCode = crypto.randomUUID().replace(/-/g, '');
+      await api.createEmailVerificationOtp(email, internalCode, passwordHash, expiresAt, {
+        phoneNumber: normalizedPhone,
+        otpDelivery: 'skysms',
+      });
+      await sendSkysmsRegistrationOtp(normalizedPhone, 120);
+      return true;
+    }
+
+    const code = generateEmailOtp();
+    await api.createEmailVerificationOtp(email, code, passwordHash, expiresAt, {
+      otpDelivery: 'email',
+    });
+
+    return sendEmailOtp(email, code, {
       subject: 'Verify Your Email - SecureAuth Registration',
     });
-    
-    return sent;
   };
 
   /**
-   * Verify email OTP and create user account
+   * Verify registration OTP (email code in Supabase, or SkySMS + server verify for SMS).
    */
-  const verifyRegistrationOtp = async (email: string, code: string): Promise<void> => {
-    // Verify OTP and get password hash
-    const verification = await api.verifyEmailVerificationOtp(email, code);
-    
-    if (!verification) {
-      throw new Error('Invalid or expired verification code');
+  const verifyRegistrationOtp = async (
+    email: string,
+    code: string,
+    phone?: string
+  ): Promise<void> => {
+    const trimmedPhone = phone?.trim();
+    const normalizedPhone = trimmedPhone ? normalizePhilippinePhone(trimmedPhone) : null;
+    if (trimmedPhone && !normalizedPhone) {
+      throw new Error('Invalid Philippine mobile number.');
+    }
+
+    let passwordHash: string;
+    if (normalizedPhone) {
+      const verification = await verifySkysmsRegistration(email, normalizedPhone, code);
+      if (!verification) {
+        throw new Error('Invalid or expired verification code');
+      }
+      passwordHash = verification.passwordHash;
+    } else {
+      const verification = await api.verifyEmailVerificationOtp(email, code);
+      if (!verification) {
+        throw new Error('Invalid or expired verification code');
+      }
+      passwordHash = verification.passwordHash;
     }
 
     const { ipAddress, userAgent } = await getClientInfo();
-    
+
     try {
-      // Create user account
-      const newUser = await api.createUser(email, verification.passwordHash, 'StandardUser');
-      
-      // Create audit log for registration
+      const newUser = await api.createUser(email, passwordHash, 'StandardUser');
       await api.createAuditLog(newUser.id, 'User registration', ipAddress, userAgent);
     } catch (error) {
       console.error('Registration error:', error);
