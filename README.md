@@ -119,13 +119,15 @@ The application will be available at `http://localhost:8080`
 1. Push your code to GitHub (for example [Keeydi/secure-access-hub](https://github.com/Keeydi/secure-access-hub))
 2. Import the project in Vercel
 3. Add environment variables in the Vercel dashboard:
-   - All `VITE_*` variables from the root `.env` (including `VITE_EMAIL_API_ENDPOINT` pointing at a reachable `/api/send-email`)
-   - All `SMTP_*` variables used by `api/send-email` (Vercel serverless), if you send mail from Vercel
+   - All `VITE_*` variables from the root `.env`. For **same-host** email + SMS (recommended on Vercel), you can keep **`VITE_EMAIL_API_ENDPOINT=/api/send-email`** or use **`https://YOUR-PROJECT.vercel.app/api/send-email`**. In production, values containing **`localhost`** are ignored for SkySMS and the app uses the **current site origin** (same behavior as email OTP).
+   - All `SMTP_*` variables used by `api/send-email` (Vercel serverless)
+   - **`SKYSMS_API_KEY`** for `api/skysms/otp/send`
+   - **`SUPABASE_URL`** and **`SUPABASE_SERVICE_ROLE_KEY`** (server-only, not `VITE_*`) for `api/skysms/verify-registration`
 4. Deploy
 
 ### SMS sign-up (SkySMS)
 
-The Vite app calls your **API base** for both email (`/api/send-email`) and SMS (`/api/skysms/*`). The Express app in `server/` implements those routes. For production SMS, deploy that server (Render, Railway, Fly, VPS, etc.), set `SKYSMS_API_KEY`, `SUPABASE_URL`, and `SUPABASE_SERVICE_ROLE_KEY` on the host, set `CORS_ORIGINS` to include your frontend origin, and set `VITE_EMAIL_API_ENDPOINT` in Vercel to your deployed URL (for example `https://api.example.com/api/send-email`).
+On **Vercel**, `api/skysms/otp/send.js` and `api/skysms/verify-registration.js` mirror `server/index.js`. Set **`SKYSMS_API_KEY`**, **`SUPABASE_URL`**, and **`SUPABASE_SERVICE_ROLE_KEY`** in the Vercel project. Alternatively, run only the **`server/`** app on another host and set **`VITE_EMAIL_API_ENDPOINT`** to that host’s `/api/send-email` URL.
 
 ## Scripts
 

@@ -3,12 +3,30 @@
  * Docs: https://skysms.skyio.site — POST /api/v1/otp/send, GET /api/v1/otp/verify
  */
 
+/**
+ * Same host as `VITE_EMAIL_API_ENDPOINT` (email uses `/api/send-email`).
+ * Mirrors `email-otp.ts`: in production, localhost in env is ignored so Vercel can use same-origin `/api/*`.
+ */
 function getLocalApiOrigin(): string {
   const emailEp = import.meta.env.VITE_EMAIL_API_ENDPOINT as string | undefined;
-  if (emailEp) {
-    if (emailEp.includes('/api/send-email')) {
-      return emailEp.replace(/\/api\/send-email\/?$/, '');
+
+  if (import.meta.env.PROD && emailEp?.includes('localhost')) {
+    if (typeof window !== 'undefined') {
+      return window.location.origin;
     }
+  }
+
+  if (emailEp?.includes('/api/send-email')) {
+    const withoutPath = emailEp.replace(/\/api\/send-email\/?$/, '');
+    if (withoutPath.startsWith('http://') || withoutPath.startsWith('https://')) {
+      return withoutPath;
+    }
+    if (typeof window !== 'undefined') {
+      return window.location.origin;
+    }
+  }
+
+  if (emailEp) {
     try {
       return new URL(emailEp).origin;
     } catch {
