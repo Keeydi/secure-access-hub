@@ -267,27 +267,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     sessionStorage.setItem(SESSION_ACCESS_TOKEN_KEY, tokenPair.accessToken);
     sessionStorage.setItem(SESSION_REFRESH_TOKEN_KEY, tokenPair.refreshToken);
     
-    // Create audit log
-    await api.createAuditLog(userData.id, 'User login', ipAddress, userAgent);
+    // Create audit log (full access is granted only after second factor on /mfa-verify)
+    await api.createAuditLog(userData.id, 'User login (password verified)', ipAddress, userAgent);
     await api.recordFailedLoginAttempt(email, true, ipAddress);
 
-    if (userData.mfaEnabled) {
-      setMfaVerified(false);
-      sessionStorage.setItem(SESSION_MFA_VERIFIED_KEY, 'false');
-      setUser(userData);
-      setIsLoading(false); // Set loading to false after login
-      return { requiresMfa: true };
-    }
-    
-    setMfaVerified(true);
-    sessionStorage.setItem(SESSION_MFA_VERIFIED_KEY, 'true');
+    // Always require a second factor before dashboard access: TOTP, SMS OTP, or email OTP
+    // (see getMfaGateInfo / MfaVerify — users without MFA still get email OTP to their account email)
+    setMfaVerified(false);
+    sessionStorage.setItem(SESSION_MFA_VERIFIED_KEY, 'false');
     setUser(userData);
-    setIsLoading(false); // Set loading to false after login
-    
-    // Start session timeout monitoring
-    startSessionTimeoutMonitoring(tokenPair.accessToken, tokenPair.refreshToken);
-    
-    return { requiresMfa: false };
+    setIsLoading(false);
+    return { requiresMfa: true };
   };
 
   const verifyMfa = async (code: string, type: 'totp' | 'email' | 'sms' | 'backup' = 'email'): Promise<boolean> => {

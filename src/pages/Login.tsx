@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Shield, Mail, Lock, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -11,8 +11,14 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, user, mfaVerified } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (user && !mfaVerified) {
+      navigate('/mfa-verify', { replace: true });
+    }
+  }, [user, mfaVerified, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,12 +26,8 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const result = await login(email, password);
-      if (result.requiresMfa) {
-        navigate('/mfa-verify');
-      } else {
-        navigate('/dashboard');
-      }
+      await login(email, password);
+      navigate('/mfa-verify');
     } catch (err) {
       setError('Invalid email or password');
     } finally {

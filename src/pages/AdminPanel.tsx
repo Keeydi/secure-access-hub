@@ -45,7 +45,7 @@ import { sendEmailOtp } from '@/lib/email-otp';
 import { Badge } from '@/components/ui/badge';
 
 export default function AdminPanel() {
-  const { isAuthenticated, user, isLoading } = useAuth();
+  const { isAuthenticated, user, mfaVerified, isLoading } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'users' | 'logs'>('users');
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
@@ -324,6 +324,9 @@ export default function AdminPanel() {
   }
 
   if (!isAuthenticated) {
+    if (user && !mfaVerified) {
+      return <Navigate to="/mfa-verify" replace />;
+    }
     return <Navigate to="/login" replace />;
   }
 

@@ -14,6 +14,7 @@ export default function MfaSetup() {
   const {
     isAuthenticated,
     user,
+    mfaVerified,
     isLoading,
     disableMfa,
     setupTotp,
@@ -137,6 +138,9 @@ export default function MfaSetup() {
   }
 
   if (!isAuthenticated) {
+    if (user && !mfaVerified) {
+      return <Navigate to="/mfa-verify" replace />;
+    }
     return <Navigate to="/login" replace />;
   }
 

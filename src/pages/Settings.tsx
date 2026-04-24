@@ -8,7 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import DashboardLayout from '@/components/DashboardLayout';
 
 export default function Settings() {
-  const { isAuthenticated, user, isLoading } = useAuth();
+  const { isAuthenticated, user, mfaVerified, isLoading } = useAuth();
 
   if (isLoading) {
     return (
@@ -19,6 +19,9 @@ export default function Settings() {
   }
 
   if (!isAuthenticated) {
+    if (user && !mfaVerified) {
+      return <Navigate to="/mfa-verify" replace />;
+    }
     return <Navigate to="/login" replace />;
   }
 

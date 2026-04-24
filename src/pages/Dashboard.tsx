@@ -12,7 +12,7 @@ interface StatCard {
 }
 
 export default function Dashboard() {
-  const { isAuthenticated, user, isLoading } = useAuth();
+  const { isAuthenticated, user, mfaVerified, isLoading } = useAuth();
   const [stats, setStats] = useState<StatCard[]>([
     { label: 'Active Users', value: '...', icon: Users },
     { label: 'Auth Requests', value: '...', icon: Key },
@@ -71,6 +71,9 @@ export default function Dashboard() {
   }
 
   if (!isAuthenticated) {
+    if (user && !mfaVerified) {
+      return <Navigate to="/mfa-verify" replace />;
+    }
     return <Navigate to="/login" replace />;
   }
 

@@ -16,8 +16,20 @@ export default function MfaVerify() {
   const [smsOtpSent, setSmsOtpSent] = useState(false);
   const [mfaPhoneDisplay, setMfaPhoneDisplay] = useState<string | null>(null);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
-  const { verifyMfa, user } = useAuth();
+  const { verifyMfa, user, mfaVerified, isLoading } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!isLoading && !user) {
+      navigate('/login', { replace: true });
+    }
+  }, [isLoading, user, navigate]);
+
+  useEffect(() => {
+    if (!isLoading && user && mfaVerified) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [isLoading, user, mfaVerified, navigate]);
 
   useEffect(() => {
     inputRefs.current[0]?.focus();
