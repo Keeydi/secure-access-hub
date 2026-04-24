@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import { normalizePhilippinePhone } from '@/lib/phone';
+import { normalizePhilippinePhone, maskPhilippinePhoneDisplay } from '@/lib/phone';
 import { cn } from '@/lib/utils';
 
 const passwordRequirements = [
@@ -18,12 +18,6 @@ const passwordRequirements = [
 ];
 
 type OtpDelivery = 'email' | 'sms';
-
-function maskPhilippinePhoneDisplay(raw: string): string {
-  const n = normalizePhilippinePhone(raw);
-  if (!n || n.length < 10) return raw.trim() || 'your number';
-  return `${n.slice(0, 6)}***${n.slice(-3)}`;
-}
 
 export default function Register() {
   const [step, setStep] = useState<'form' | 'verify'>('form');

@@ -2,16 +2,28 @@ import { useState, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Shield, Smartphone, Mail, CheckCircle, Copy, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useToast } from '@/hooks/use-toast';
 import { generateBackupCodes } from '@/lib/api';
 import { generateTotpCode } from '@/lib/totp';
-import { generateTotpCode } from '@/lib/totp';
 
 export default function MfaSetup() {
-  const { isAuthenticated, user, isLoading, disableMfa, setupTotp, setupEmailOtp, verifyTotpSetup, verifyEmailOtpSetup } = useAuth();
-  const [step, setStep] = useState<'choose' | 'totp' | 'email' | 'backup' | 'complete'>('choose');
+  const {
+    isAuthenticated,
+    user,
+    isLoading,
+    disableMfa,
+    setupTotp,
+    setupEmailOtp,
+    setupSmsMfaOtp,
+    verifyTotpSetup,
+    verifyEmailOtpSetup,
+    verifySmsMfaSetup,
+  } = useAuth();
+  const [step, setStep] = useState<'choose' | 'totp' | 'email' | 'sms' | 'backup' | 'complete'>('choose');
   const [verificationCode, setVerificationCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -20,6 +32,8 @@ export default function MfaSetup() {
   const [totpUri, setTotpUri] = useState<string | null>(null);
   const [backupCodes, setBackupCodes] = useState<string[]>([]);
   const [emailOtpSent, setEmailOtpSent] = useState(false);
+  const [smsPhone, setSmsPhone] = useState('');
+  const [smsOtpSent, setSmsOtpSent] = useState(false);
   const { toast } = useToast();
 
   // Initialize TOTP setup when step changes to 'totp'
@@ -69,6 +83,50 @@ export default function MfaSetup() {
       sendOtp();
     }
   }, [step, emailOtpSent, setupEmailOtp, user, toast]);
+
+  const handleSmsSendCode = async () => {
+    setError('');
+    try {
+      setLoading(true);
+      await setupSmsMfaOtp(smsPhone);
+      setSmsOtpSent(true);
+      setVerificationCode('');
+      toast({
+        title: 'Code Sent',
+        description: 'A verification code has been sent via SMS.',
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to send SMS code');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSmsOtpVerify = async () => {
+    if (verificationCode.length !== 6) {
+      setError('Please enter a 6-digit code');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError('');
+      const isValid = await verifySmsMfaSetup(smsPhone, verificationCode);
+
+      if (isValid) {
+        const codes = await generateBackupCodes(user!.id);
+        setBackupCodes(codes);
+        setStep('backup');
+      } else {
+        setError('Invalid or expired code. Please try again.');
+      }
+    } catch (error) {
+      setError('Verification failed. Please try again.');
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -225,6 +283,28 @@ export default function MfaSetup() {
                   <h3 className="font-semibold mb-1">Email OTP</h3>
                   <p className="text-sm text-muted-foreground">
                     Receive a one-time code via email each time you sign in
+                  </p>
+                </div>
+              </div>
+            </button>
+
+            <button
+              onClick={() => {
+                setSmsPhone('');
+                setSmsOtpSent(false);
+                setVerificationCode('');
+                setStep('sms');
+              }}
+              className="w-full glass rounded-xl p-6 text-left hover:border-primary/50 transition-all group"
+            >
+              <div className="flex items-start gap-4">
+                <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                  <Smartphone className="h-6 w-6 text-primary" />
+                </div>
+                <div>
+                  <h3 className="font-semibold mb-1">SMS OTP</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Receive a one-time code via SMS each time you sign in (Philippine mobile)
                   </p>
                 </div>
               </div>
@@ -401,6 +481,106 @@ export default function MfaSetup() {
                     'Verify & Continue'
                   )}
                 </Button>
+              </div>
+            )}
+          </div>
+        ) : step === 'sms' ? (
+          <div className="glass rounded-xl p-8">
+            <h2 className="text-xl font-semibold mb-6 text-center">Set Up SMS OTP</h2>
+
+            <div className="text-center mb-8">
+              <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
+                <Smartphone className="h-8 w-8 text-primary" />
+              </div>
+              <p className="text-muted-foreground mb-4 text-sm max-w-md mx-auto">
+                Enter your Philippine mobile number. We will send a 6-digit code via SMS to confirm it,
+                then use SMS for sign-in verification like email OTP.
+              </p>
+              <Label htmlFor="sms-mfa-phone" className="sr-only">
+                Mobile number
+              </Label>
+              <Input
+                id="sms-mfa-phone"
+                type="tel"
+                placeholder="+639171234567 or 09171234567"
+                value={smsPhone}
+                onChange={(e) => setSmsPhone(e.target.value)}
+                disabled={smsOtpSent}
+                className="max-w-md mx-auto"
+              />
+              {!smsOtpSent && (
+                <Button className="mt-4 glow-primary" onClick={handleSmsSendCode} disabled={loading || !smsPhone.trim()}>
+                  {loading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Sending...
+                    </>
+                  ) : (
+                    'Send verification code'
+                  )}
+                </Button>
+              )}
+            </div>
+
+            {error && (
+              <div className="flex items-center gap-2 p-4 mb-6 rounded-lg bg-destructive/10 text-destructive border border-destructive/20">
+                <AlertCircle className="h-5 w-5" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            {smsOtpSent && (
+              <div className="space-y-4">
+                <p className="text-sm text-center text-muted-foreground">
+                  Enter the 6-digit code sent to your phone
+                </p>
+                <div className="flex justify-center gap-2">
+                  {[0, 1, 2, 3, 4, 5].map((i) => (
+                    <input
+                      key={i}
+                      type="text"
+                      maxLength={1}
+                      value={verificationCode[i] || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (/^\d*$/.test(val)) {
+                          const newCode = verificationCode.split('');
+                          newCode[i] = val;
+                          setVerificationCode(newCode.join(''));
+                        }
+                      }}
+                      className="w-12 h-14 text-center text-xl font-mono rounded-lg border border-border bg-muted/50 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
+                    />
+                  ))}
+                </div>
+                <div className="flex gap-4 mt-8">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => {
+                      setStep('choose');
+                      setSmsOtpSent(false);
+                      setSmsPhone('');
+                      setVerificationCode('');
+                    }}
+                  >
+                    Back
+                  </Button>
+                  <Button
+                    className="flex-1 glow-primary"
+                    onClick={handleSmsOtpVerify}
+                    disabled={loading || verificationCode.length !== 6}
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Verifying...
+                      </>
+                    ) : (
+                      'Verify & Continue'
+                    )}
+                  </Button>
+                </div>
               </div>
             )}
           </div>

@@ -57,6 +57,8 @@ export interface Database {
           mfa_secret: string | null;
           totp_enabled: boolean;
           email_otp_enabled: boolean;
+          mfa_phone_number: string | null;
+          sms_otp_enabled: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -69,6 +71,8 @@ export interface Database {
           mfa_secret?: string | null;
           totp_enabled?: boolean;
           email_otp_enabled?: boolean;
+          mfa_phone_number?: string | null;
+          sms_otp_enabled?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -81,6 +85,8 @@ export interface Database {
           mfa_secret?: string | null;
           totp_enabled?: boolean;
           email_otp_enabled?: boolean;
+          mfa_phone_number?: string | null;
+          sms_otp_enabled?: boolean;
           created_at?: string;
           updated_at?: string;
         };

@@ -6,11 +6,11 @@ const features = [
   {
     icon: Lock,
     title: 'Multi-Factor Authentication',
-    description: 'Secure your accounts with TOTP authenticator apps and email OTP verification.',
+    description: 'Secure your accounts with TOTP, email OTP, and SMS verification.',
   },
   {
     icon: Users,
-    title: 'Role-Based Access Control',
+    title: 'Team roles',
     description: 'Granular permissions with Admin, Standard, and Restricted user roles.',
   },
   {
@@ -64,12 +64,12 @@ export default function Landing() {
           <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-foreground mb-6 leading-tight animate-fade-in">
             Multi-Factor Authentication
             <br />
-            <span className="text-gradient">Access Control System</span>
+            <span className="text-gradient">for Your Business</span>
           </h1>
           
           {/* Subtitle */}
           <p className="text-xl md:text-2xl text-muted-foreground mb-4 max-w-3xl mx-auto animate-fade-in">
-            Secure Your Online Business Platforms with Advanced Authentication and Role-Based Access Control
+            Secure your online business platforms with advanced authentication
           </p>
           
           <p className="text-lg text-muted-foreground/80 mb-12 max-w-2xl mx-auto animate-fade-in">

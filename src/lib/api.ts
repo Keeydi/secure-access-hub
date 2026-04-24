@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import type { UserRole } from '@/contexts/AuthContext';
+import { maskPhilippinePhoneDisplay } from './phone';
 
 export interface User {
   id: string;
@@ -117,6 +118,8 @@ export async function createUser(
       mfa_enabled: false,
       totp_enabled: false,
       email_otp_enabled: false,
+      sms_otp_enabled: false,
+      mfa_phone_number: null,
     })
     .select('id, email, role, mfa_enabled, created_at')
     .single();
@@ -177,6 +180,8 @@ export async function updateUserMfa(
     mfa_secret?: string | null;
     totp_enabled?: boolean;
     email_otp_enabled?: boolean;
+    sms_otp_enabled?: boolean;
+    mfa_phone_number?: string | null;
     updated_at: string;
   } = {
     mfa_enabled: mfaEnabled,
@@ -184,13 +189,18 @@ export async function updateUserMfa(
   };
 
   if (mfaSecret !== undefined) {
-    // Setting TOTP secret - enable TOTP
+    // Setting TOTP secret - enable TOTP, clear other MFA methods
     updateData.mfa_secret = mfaSecret;
     updateData.totp_enabled = mfaEnabled;
+    updateData.email_otp_enabled = false;
+    updateData.sms_otp_enabled = false;
+    updateData.mfa_phone_number = null;
   } else if (!mfaEnabled) {
-    // Disabling MFA - clear both TOTP and email OTP flags
+    // Disabling MFA - clear TOTP, email OTP, and SMS MFA
     updateData.totp_enabled = false;
     updateData.email_otp_enabled = false;
+    updateData.sms_otp_enabled = false;
+    updateData.mfa_phone_number = null;
     updateData.mfa_secret = null;
   }
 
@@ -262,6 +272,58 @@ export async function getMfaSecret(userId: string): Promise<string | null> {
   }
 
   return data.mfa_secret;
+}
+
+export type MfaGateMethod = 'totp' | 'email' | 'sms';
+
+/**
+ * Which second factor applies after password (TOTP secret, SMS on file, or email OTP).
+ */
+export async function getMfaGateInfo(userId: string): Promise<{
+  method: MfaGateMethod;
+  mfaPhoneDisplay: string | null;
+}> {
+  const { data, error } = await supabase
+    .from('users')
+    .select('mfa_secret, sms_otp_enabled, mfa_phone_number')
+    .eq('id', userId)
+    .single();
+
+  if (error || !data) {
+    return { method: 'email', mfaPhoneDisplay: null };
+  }
+
+  if (data.mfa_secret) {
+    return { method: 'totp', mfaPhoneDisplay: null };
+  }
+
+  const smsOn = Boolean(data.sms_otp_enabled);
+  const phone = data.mfa_phone_number as string | null | undefined;
+  if (smsOn && phone) {
+    return { method: 'sms', mfaPhoneDisplay: maskPhilippinePhoneDisplay(phone) };
+  }
+
+  return { method: 'email', mfaPhoneDisplay: null };
+}
+
+/** After email OTP setup verification — exclusive with TOTP / SMS MFA flags. */
+export async function markUserMfaEmailEnabled(userId: string): Promise<void> {
+  const { error } = await supabase
+    .from('users')
+    .update({
+      mfa_enabled: true,
+      email_otp_enabled: true,
+      sms_otp_enabled: false,
+      mfa_phone_number: null,
+      totp_enabled: false,
+      mfa_secret: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', userId);
+
+  if (error) {
+    throw new Error(`Failed to enable email MFA: ${error.message}`);
+  }
 }
 
 /**

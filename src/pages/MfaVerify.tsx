@@ -5,49 +5,60 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import * as api from '@/lib/api';
 import { generateEmailOtp, sendEmailOtp } from '@/lib/email-otp';
+import { sendSkysmsMfaLoginOtpByUserId } from '@/lib/skysms-mfa';
 
 export default function MfaVerify() {
   const [code, setCode] = useState(['', '', '', '', '', '']);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [mfaType, setMfaType] = useState<'totp' | 'email'>('totp');
+  const [mfaType, setMfaType] = useState<'totp' | 'email' | 'sms'>('totp');
   const [emailOtpSent, setEmailOtpSent] = useState(false);
+  const [smsOtpSent, setSmsOtpSent] = useState(false);
+  const [mfaPhoneDisplay, setMfaPhoneDisplay] = useState<string | null>(null);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const { verifyMfa, user } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
     inputRefs.current[0]?.focus();
-    
-    // Determine MFA type and send email OTP if needed
+
     const determineMfaType = async () => {
-      if (user) {
-        // Check if user has TOTP enabled (has mfa_secret)
-        const mfaSecret = await api.getMfaSecret(user.id);
-        if (mfaSecret) {
-          setMfaType('totp');
-        } else {
-          // Assume email OTP and send code
-          setMfaType('email');
-          try {
-            // Generate and send email OTP
-            const otpCode = generateEmailOtp();
-            const expiresAt = new Date();
-            expiresAt.setSeconds(expiresAt.getSeconds() + 120); // 2 minutes
-            
-            await api.createOtpCode(user.id, otpCode, 'email', expiresAt);
-            const sent = await sendEmailOtp(user.email, otpCode);
-            
-            if (sent) {
-              setEmailOtpSent(true);
-            }
-          } catch (error) {
-            console.error('Failed to send email OTP:', error);
-          }
+      if (!user) return;
+
+      const gate = await api.getMfaGateInfo(user.id);
+      if (gate.method === 'totp') {
+        setMfaType('totp');
+        return;
+      }
+      if (gate.method === 'sms') {
+        setMfaType('sms');
+        setMfaPhoneDisplay(gate.mfaPhoneDisplay);
+        try {
+          await sendSkysmsMfaLoginOtpByUserId(user.id);
+          setSmsOtpSent(true);
+        } catch (error) {
+          console.error('Failed to send SMS MFA code:', error);
         }
+        return;
+      }
+
+      setMfaType('email');
+      try {
+        const otpCode = generateEmailOtp();
+        const expiresAt = new Date();
+        expiresAt.setSeconds(expiresAt.getSeconds() + 120);
+
+        await api.createOtpCode(user.id, otpCode, 'email', expiresAt);
+        const sent = await sendEmailOtp(user.email, otpCode);
+
+        if (sent) {
+          setEmailOtpSent(true);
+        }
+      } catch (error) {
+        console.error('Failed to send email OTP:', error);
       }
     };
-    
+
     determineMfaType();
   }, [user]);
 
@@ -103,7 +114,6 @@ export default function MfaVerify() {
       if (isBackupCodeFormat) {
         success = await verifyMfa(cleanCode, 'backup');
       } else if (cleanCode.length === 6) {
-        // Try regular MFA code
         success = await verifyMfa(cleanCode, mfaType);
         
         // If regular MFA fails, try as backup code (in case user entered backup code without dashes)
@@ -132,11 +142,15 @@ export default function MfaVerify() {
         <div className="bg-card border border-border rounded-lg p-8 shadow-sm">
           <h2 className="text-2xl font-bold text-foreground mb-2 text-center">Two-Factor Authentication</h2>
           <p className="text-muted-foreground mb-4 text-center text-sm">
-            {mfaType === 'totp' 
+            {mfaType === 'totp'
               ? 'Enter the 6-digit code from your authenticator app'
-              : emailOtpSent
-              ? `Enter the 6-digit code sent to ${user?.email}`
-              : 'Sending verification code to your email...'}
+              : mfaType === 'sms'
+                ? smsOtpSent
+                  ? `Enter the 6-digit code sent via SMS to ${mfaPhoneDisplay || 'your phone'}`
+                  : 'Sending verification code via SMS...'
+                : emailOtpSent
+                  ? `Enter the 6-digit code sent to ${user?.email}`
+                  : 'Sending verification code to your email...'}
           </p>
           <p className="text-muted-foreground mb-8 text-center text-xs">
             Or enter a backup code (12 digits, with or without dashes)

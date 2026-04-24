@@ -232,9 +232,185 @@ app.post('/api/skysms/verify-registration', async (req, res) => {
   }
 });
 
+const MFA_LOGIN_OTP_MESSAGE =
+  'SecureAuth sign-in code {{otp}}. Valid 2 minutes. Do not share with anyone.';
+
+app.post('/api/skysms/send-mfa-login-otp', async (req, res) => {
+  try {
+    const apiKey = process.env.SKYSMS_API_KEY;
+    const baseUrl = process.env.SUPABASE_URL?.replace(/\/$/, '');
+    if (!apiKey) {
+      return res.status(503).json({ error: 'SKYSMS_API_KEY is not configured' });
+    }
+    if (!baseUrl || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      return res.status(503).json({
+        error: 'Supabase service credentials missing',
+        message: 'Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY for SMS MFA',
+      });
+    }
+
+    const user_id = (req.body?.user_id || '').toString().trim();
+    if (!user_id) {
+      return res.status(400).json({ error: 'user_id is required' });
+    }
+
+    const selUrl = `${baseUrl}/rest/v1/users?id=eq.${encodeURIComponent(
+      user_id
+    )}&select=mfa_phone_number,sms_otp_enabled,mfa_enabled`;
+    const sel = await fetch(selUrl, { headers: supabaseHeaders() });
+    const rows = await sel.json().catch(() => []);
+    const row = Array.isArray(rows) ? rows[0] : null;
+    if (!row?.mfa_phone_number || !row.sms_otp_enabled || !row.mfa_enabled) {
+      return res.status(400).json({
+        success: false,
+        message: 'SMS MFA is not enabled for this account',
+      });
+    }
+
+    const url = `${skysmsBaseUrl()}/api/v1/otp/send`;
+    const upstream = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': apiKey,
+      },
+      body: JSON.stringify({
+        phone_number: row.mfa_phone_number,
+        message: MFA_LOGIN_OTP_MESSAGE,
+        expire: 120,
+      }),
+    });
+    const data = await upstream.json().catch(() => ({}));
+    res.status(upstream.status).json(data);
+  } catch (e) {
+    console.error('send-mfa-login-otp:', e);
+    res.status(500).json({ error: 'SMS send failed', message: e.message });
+  }
+});
+
+app.post('/api/skysms/verify-mfa-login', async (req, res) => {
+  try {
+    const apiKey = process.env.SKYSMS_API_KEY;
+    const baseUrl = process.env.SUPABASE_URL?.replace(/\/$/, '');
+    if (!apiKey) {
+      return res.status(503).json({ error: 'SKYSMS_API_KEY is not configured' });
+    }
+    if (!baseUrl || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      return res.status(503).json({
+        error: 'Supabase service credentials missing',
+        message: 'Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY',
+      });
+    }
+
+    const user_id = (req.body?.user_id || '').toString().trim();
+    const otp = (req.body?.otp || '').toString().trim();
+    if (!user_id || !otp) {
+      return res.status(400).json({ error: 'user_id and otp are required' });
+    }
+
+    const selUrl = `${baseUrl}/rest/v1/users?id=eq.${encodeURIComponent(
+      user_id
+    )}&select=mfa_phone_number,sms_otp_enabled,mfa_enabled`;
+    const sel = await fetch(selUrl, { headers: supabaseHeaders() });
+    const rows = await sel.json().catch(() => []);
+    const row = Array.isArray(rows) ? rows[0] : null;
+    if (!row?.mfa_phone_number || !row.sms_otp_enabled || !row.mfa_enabled) {
+      return res.status(400).json({
+        success: false,
+        message: 'SMS MFA is not enabled for this account',
+      });
+    }
+
+    const verifyUrl = `${skysmsBaseUrl()}/api/v1/otp/verify?otp=${encodeURIComponent(
+      otp
+    )}&phone_number=${encodeURIComponent(row.mfa_phone_number)}`;
+    const skyRes = await fetch(verifyUrl, {
+      method: 'GET',
+      headers: { 'X-API-Key': apiKey },
+    });
+    const skyData = await skyRes.json().catch(() => ({}));
+    if (!skyRes.ok || skyData?.success === false || skyData?.valid === false) {
+      return res.status(400).json({
+        success: false,
+        message: skyData?.message || skyData?.error || 'Invalid or expired SMS code',
+      });
+    }
+
+    res.json({ success: true });
+  } catch (e) {
+    console.error('verify-mfa-login:', e);
+    res.status(500).json({ success: false, message: e.message || 'Verification failed' });
+  }
+});
+
+app.post('/api/skysms/verify-mfa-setup', async (req, res) => {
+  try {
+    const apiKey = process.env.SKYSMS_API_KEY;
+    const baseUrl = process.env.SUPABASE_URL?.replace(/\/$/, '');
+    if (!apiKey) {
+      return res.status(503).json({ error: 'SKYSMS_API_KEY is not configured' });
+    }
+    if (!baseUrl || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      return res.status(503).json({
+        error: 'Supabase service credentials missing',
+        message: 'Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY',
+      });
+    }
+
+    const user_id = (req.body?.user_id || '').toString().trim();
+    const phone_number = (req.body?.phone_number || '').toString().trim();
+    const otp = (req.body?.otp || '').toString().trim();
+    if (!user_id || !phone_number || !otp) {
+      return res.status(400).json({ error: 'user_id, phone_number, and otp are required' });
+    }
+
+    const verifyUrl = `${skysmsBaseUrl()}/api/v1/otp/verify?otp=${encodeURIComponent(
+      otp
+    )}&phone_number=${encodeURIComponent(phone_number)}`;
+    const skyRes = await fetch(verifyUrl, {
+      method: 'GET',
+      headers: { 'X-API-Key': apiKey },
+    });
+    const skyData = await skyRes.json().catch(() => ({}));
+    if (!skyRes.ok || skyData?.success === false || skyData?.valid === false) {
+      return res.status(400).json({
+        success: false,
+        message: skyData?.message || skyData?.error || 'Invalid or expired SMS code',
+      });
+    }
+
+    const patch = await fetch(`${baseUrl}/rest/v1/users?id=eq.${encodeURIComponent(user_id)}`, {
+      method: 'PATCH',
+      headers: { ...supabaseHeaders(), Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        mfa_enabled: true,
+        sms_otp_enabled: true,
+        mfa_phone_number: phone_number,
+        totp_enabled: false,
+        email_otp_enabled: false,
+        mfa_secret: null,
+        updated_at: new Date().toISOString(),
+      }),
+    });
+    if (!patch.ok) {
+      const t = await patch.text();
+      console.error('verify-mfa-setup Supabase patch:', t);
+      return res.status(500).json({ success: false, message: 'Failed to save SMS MFA' });
+    }
+
+    res.json({ success: true });
+  } catch (e) {
+    console.error('verify-mfa-setup:', e);
+    res.status(500).json({ success: false, message: e.message || 'Verification failed' });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`\n🚀 API server: http://localhost:${PORT}`);
   console.log(`   POST /api/send-email  (SMTP, optional)`);
   console.log(`   POST /api/skysms/otp/send`);
-  console.log(`   POST /api/skysms/verify-registration\n`);
+  console.log(`   POST /api/skysms/verify-registration`);
+  console.log(`   POST /api/skysms/send-mfa-login-otp`);
+  console.log(`   POST /api/skysms/verify-mfa-login`);
+  console.log(`   POST /api/skysms/verify-mfa-setup\n`);
 });

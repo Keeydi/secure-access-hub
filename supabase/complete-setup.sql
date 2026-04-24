@@ -24,6 +24,8 @@ CREATE TABLE IF NOT EXISTS users (
   mfa_secret VARCHAR(255) NULL,
   totp_enabled BOOLEAN DEFAULT FALSE,
   email_otp_enabled BOOLEAN DEFAULT FALSE,
+  mfa_phone_number VARCHAR(20) NULL,
+  sms_otp_enabled BOOLEAN DEFAULT FALSE,
   is_active BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()

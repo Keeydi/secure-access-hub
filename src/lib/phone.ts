@@ -21,3 +21,10 @@ export function normalizePhilippinePhone(raw: string): string | null {
   }
   return null;
 }
+
+/** Mask for UI (e.g. +63912***456). */
+export function maskPhilippinePhoneDisplay(raw: string): string {
+  const n = normalizePhilippinePhone(raw);
+  if (!n || n.length < 10) return raw.trim() || 'your number';
+  return `${n.slice(0, 6)}***${n.slice(-3)}`;
+}

@@ -7,6 +7,12 @@ import { generateTotpSecret, generateTotpUri, generateQRCode, verifyTotp } from 
 import { generateEmailOtp, sendEmailOtp } from '@/lib/email-otp';
 import { normalizePhilippinePhone } from '@/lib/phone';
 import { sendSkysmsRegistrationOtp, verifySkysmsRegistration } from '@/lib/skysms-registration';
+import {
+  sendSkysmsMfaLoginOtpByUserId,
+  sendSkysmsMfaSetupOtp,
+  verifySkysmsMfaLogin,
+  verifySkysmsMfaSetup,
+} from '@/lib/skysms-mfa';
 import { checkLoginRateLimit, getRateLimitErrorMessage } from '@/lib/rate-limit';
 import { checkSessionTimeout, getTimeUntilExpiry, SESSION_TIMEOUT_MS } from '@/lib/session-timeout';
 import { getClientIpAddress, getCachedClientIp } from '@/lib/ip-address';
@@ -22,7 +28,7 @@ interface AuthContextType {
   mfaVerified: boolean;
   isLoading: boolean; // Track if session is being restored
   login: (email: string, password: string) => Promise<{ requiresMfa: boolean }>;
-  verifyMfa: (code: string, type?: 'totp' | 'email') => Promise<boolean>;
+  verifyMfa: (code: string, type?: 'totp' | 'email' | 'sms') => Promise<boolean>;
   logout: () => void;
   sendRegistrationOtp: (email: string, password: string, phone?: string) => Promise<boolean>;
   verifyRegistrationOtp: (email: string, code: string, phone?: string) => Promise<void>;
@@ -32,6 +38,8 @@ interface AuthContextType {
   setupEmailOtp: () => Promise<boolean>;
   verifyTotpSetup: (code: string, secret: string) => Promise<boolean>;
   verifyEmailOtpSetup: (code: string) => Promise<boolean>;
+  setupSmsMfaOtp: (phone: string) => Promise<boolean>;
+  verifySmsMfaSetup: (phone: string, code: string) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -282,7 +290,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { requiresMfa: false };
   };
 
-  const verifyMfa = async (code: string, type: 'totp' | 'email' | 'backup' = 'email'): Promise<boolean> => {
+  const verifyMfa = async (code: string, type: 'totp' | 'email' | 'sms' | 'backup' = 'email'): Promise<boolean> => {
     if (!user) {
       return false;
     }
@@ -302,6 +310,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return false;
       }
       isValid = verifyTotp(code, mfaSecret);
+    } else if (type === 'sms') {
+      try {
+        isValid = await verifySkysmsMfaLogin(user.id, code);
+      } catch {
+        isValid = false;
+      }
     } else {
       // Verify Email OTP code (expiry is checked in verifyOtpCode - 120 seconds)
       isValid = await api.verifyOtpCode(user.id, code, 'email');
@@ -502,8 +516,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const isValid = await api.verifyOtpCode(user.id, code, 'email');
     
     if (isValid) {
-      // Enable email OTP MFA
-      await api.updateUserMfa(user.id, true);
+      // Enable email OTP MFA (exclusive with TOTP / SMS)
+      await api.markUserMfaEmailEnabled(user.id);
       
       const updatedUser = { ...user, mfaEnabled: true };
       setUser(updatedUser);
@@ -514,6 +528,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return true;
     }
 
+    return false;
+  };
+
+  const setupSmsMfaOtp = async (phone: string): Promise<boolean> => {
+    if (!user) {
+      throw new Error('User not authenticated');
+    }
+    const normalized = normalizePhilippinePhone(phone.trim());
+    if (!normalized) {
+      throw new Error('Invalid Philippine mobile number. Use +639XXXXXXXXX or 09XXXXXXXXX.');
+    }
+    await sendSkysmsMfaSetupOtp(normalized);
+    const { ipAddress, userAgent } = await getClientInfo();
+    await api.createAuditLog(user.id, 'SMS MFA setup code sent', ipAddress, userAgent);
+    return true;
+  };
+
+  const verifySmsMfaSetup = async (phone: string, otp: string): Promise<boolean> => {
+    if (!user) {
+      return false;
+    }
+    const normalized = normalizePhilippinePhone(phone.trim());
+    if (!normalized) {
+      return false;
+    }
+    try {
+      const ok = await verifySkysmsMfaSetup(user.id, normalized, otp);
+      if (ok) {
+        const updatedUser = { ...user, mfaEnabled: true };
+        setUser(updatedUser);
+        sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify(updatedUser));
+        const { ipAddress, userAgent } = await getClientInfo();
+        await api.createAuditLog(user.id, 'SMS OTP MFA enabled', ipAddress, userAgent);
+        return true;
+      }
+    } catch {
+      return false;
+    }
     return false;
   };
 
@@ -571,6 +623,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setupEmailOtp,
         verifyTotpSetup,
         verifyEmailOtpSetup,
+        setupSmsMfaOtp,
+        verifySmsMfaSetup,
       }}
     >
       {children}
